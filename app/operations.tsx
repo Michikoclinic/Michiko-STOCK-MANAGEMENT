@@ -65,6 +65,7 @@ export function OperationalPage({
   page: string;
   notify: (s: string) => void;
 }) {
+  const [dailyCases] = useSharedStored<Array<{ date: string; items: Array<{ name: string; qty: number }> }>>('michiko-stock-cases', []);
   const [records, setRecords] = useSharedStored<RecordRow[]>(
     'michiko-operations',
     [],
@@ -86,7 +87,7 @@ export function OperationalPage({
       <Products products={products} setProducts={setProducts} notify={notify} />
     );
   if (page === 'รายงาน')
-    return <Reports records={records} products={products} notify={notify} />;
+    return <Reports records={records} products={products} notify={notify} dailyCases={dailyCases} />;
   if (page === 'ประวัติการเคลื่อนไหว') return <Movements records={records} />;
   if (page === 'ตั้งค่า') return <Preferences notify={notify} />;
   return (
@@ -158,12 +159,14 @@ function TransactionPage({
   setRecords,
   products,
   notify,
+  dailyCases,
 }: {
   page: string;
   records: RecordRow[];
   setRecords: (v: RecordRow[] | ((p: RecordRow[]) => RecordRow[])) => void;
   products: Product[];
   notify: (s: string) => void;
+  dailyCases: Array<{ date: string; items: Array<{ name: string; qty: number }> }>;
 }) {
   const cfg = configs[page] || configs['รับเข้า'];
   const Icon = cfg.icon;
@@ -847,8 +850,19 @@ function Reports({
   const openingSnapshot = snapshots.find((s) => s.id === openingId);
   const closingSnapshot = snapshots.find((s) => s.id === closingId);
   const comparison = useMemo(() => compareSnapshots(openingSnapshot, closingSnapshot), [openingSnapshot, closingSnapshot]);
+  const inPeriod = (date: string) => (!openingSnapshot || date >= openingSnapshot.date) && (!closingSnapshot || date <= closingSnapshot.date);
+  const movement = (product: string, types: string[]) => records.filter((r) => inPeriod(r.date) && normalizeName(r.product) === normalizeName(product) && types.includes(r.type)).reduce((sum, r) => sum + r.qty, 0);
   const decreases = comparison.filter((row) => row.change < 0);
   const increases = comparison.filter((row) => row.change > 0);
+  const importantRows = comparison.filter((row) => row.change !== 0).slice(0, 15).map((row) => {
+    const received = movement(row.name, ['รับเข้า']);
+    const issued = movement(row.name, ['เบิกออก']);
+    const borrowed = movement(row.name, ['ยืม']);
+    const transferred = movement(row.name, ['โอนย้าย']);
+    const used = dailyCases.filter((daily) => inPeriod(daily.date)).reduce((sum, daily) => sum + daily.items.filter((item) => normalizeName(item.name) === normalizeName(row.name)).reduce((n, item) => n + Number(item.qty || 0), 0), 0) + issued;
+    const documentedClosing = row.opening + received - used - borrowed - transferred;
+    return { ...row, received, used, borrowed, transferred, adjustment: row.closing - documentedClosing };
+  });
   const importSnapshot = async (file: File, kind: 'opening' | 'latest') => {
     try {
       const snapshot = await readStockSnapshot(file);
@@ -870,10 +884,6 @@ function Reports({
   const outgoing = records
     .filter((r) => ['เบิกออก', 'โอนย้าย', 'ยืม'].includes(r.type))
     .reduce((n, r) => n + r.qty, 0);
-  const movement = (product: string, types: string[]) =>
-    records
-      .filter((r) => r.product === product && types.includes(r.type))
-      .reduce((sum, r) => sum + r.qty, 0);
   const categories = [...new Set(products.map((p) => p.category))];
   return (
     <>
@@ -887,7 +897,7 @@ function Reports({
         <input ref={openingInput} hidden type="file" accept=".zip,.xlsx,.xls,.csv" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importSnapshot(file, 'opening'); e.currentTarget.value = ''; }} />
         <input ref={latestInput} hidden type="file" accept=".zip,.xlsx,.xls,.csv" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importSnapshot(file, 'latest'); e.currentTarget.value = ''; }} />
         <section className="snapshot-controls panel"><div className="snapshot-select"><span>ยอดต้นงวด</span><select value={openingId} onChange={(e) => setOpeningId(e.target.value)}><option value="">ยังไม่มีข้อมูล</option>{sortedSnapshots.map((s) => <option key={s.id} value={s.id}>{formatSnapshotDate(s.date)} · {s.items.length} รายการ</option>)}</select><button onClick={() => openingInput.current?.click()}><FileUp size={15}/> เปลี่ยนไฟล์ต้นงวด</button></div><div className="compare-arrow">→</div><div className="snapshot-select"><span>ยอดล่าสุด</span><select value={closingId} onChange={(e) => setClosingId(e.target.value)}><option value="">ยังไม่มีข้อมูล</option>{sortedSnapshots.map((s) => <option key={s.id} value={s.id}>{formatSnapshotDate(s.date)} · {s.items.length} รายการ</option>)}</select><button className="primary" onClick={() => latestInput.current?.click()}><FileUp size={15}/> นำเข้าไฟล์ล่าสุด</button></div></section>
-        {openingSnapshot && closingSnapshot ? <><div className="report-metrics comparison-metrics"><Mini title="สินค้ายอดลดลง" value={`${decreases.length} รายการ`} /><Mini title="สินค้ายอดเพิ่มขึ้น" value={`${increases.length} รายการ`} /><Mini title="ช่วงที่เปรียบเทียบ" value={`${formatShortDate(openingSnapshot.date)}–${formatShortDate(closingSnapshot.date)}`} /><Mini title="สินค้าไม่เปลี่ยน" value={`${comparison.filter((r) => r.change === 0).length} รายการ`} /></div><section className="ops-table panel comparison-report"><div className="ops-toolbar"><strong>รายละเอียดการเปลี่ยนแปลงยอดคงคลัง</strong><button onClick={printOperationalReport}><Printer size={15}/> พิมพ์</button><button onClick={exportComparison}><FileDown size={15}/> Export Excel</button></div><table><thead><tr><th>รหัส</th><th>สินค้า</th><th>ต้นงวด</th><th>ล่าสุด</th><th>เปลี่ยนแปลง</th><th>หน่วย</th><th>สถานะ</th></tr></thead><tbody>{comparison.filter((r) => r.change !== 0).map((row) => <tr key={row.code}><td>{row.code}</td><td><strong>{row.name}</strong><small>{row.category}</small></td><td>{row.opening}</td><td>{row.closing}</td><td className={row.change < 0 ? 'change-down' : 'change-up'}>{row.change > 0 ? '+' : ''}{row.change}</td><td>{row.unit}</td><td><span className={`status ${row.change < 0 ? 'low-status' : ''}`}>{row.change < 0 ? 'ยอดลดลง' : 'ยอดเพิ่มขึ้น'}</span></td></tr>)}</tbody></table></section><p className="report-note">ยอดลดลงเป็นการเปลี่ยนแปลงสุทธิจากไฟล์สองวัน อาจเกิดจากใช้ เบิก โอน หรือปรับยอด ควรตรวจสอบกับ Stock Movement เมื่อต้องการแยกสาเหตุ</p></> : <section className="panel snapshot-empty"><Boxes/><h3>นำเข้าไฟล์ต้นงวดและไฟล์ล่าสุด</h3><p>ครั้งต่อไประบบจะจำยอดล่าสุดไว้เป็นต้นงวดให้โดยอัตโนมัติ</p></section>}
+        {openingSnapshot && closingSnapshot ? <><div className="report-metrics comparison-metrics"><Mini title="สินค้ายอดลดลง" value={`${decreases.length} รายการ`} /><Mini title="สินค้ายอดเพิ่มขึ้น" value={`${increases.length} รายการ`} /><Mini title="ช่วงที่เปรียบเทียบ" value={`${formatShortDate(openingSnapshot.date)}–${formatShortDate(closingSnapshot.date)}`} /><Mini title="รายการสำคัญในรายงาน" value={`${importantRows.length} รายการ`} /></div><section className="ops-table panel comparison-report"><div className="report-print-head"><img src="/michiko-logo.png" alt="MICHIKO"/><div><h2>รายงานสรุปการเคลื่อนไหว Stock</h2><p>{formatShortDate(openingSnapshot.date)} ถึง {formatShortDate(closingSnapshot.date)} · MICHIKO สาขา Emsphere</p></div></div><div className="ops-toolbar"><strong>รายการเคลื่อนไหวสำคัญ 15 อันดับ</strong><button onClick={printOperationalReport}><Printer size={15}/> พิมพ์</button><button onClick={exportComparison}><FileDown size={15}/> Export Excel</button></div><table className="movement-summary-table"><thead><tr><th>รหัส / สินค้า</th><th>ต้นงวด</th><th>รับเข้า</th><th>ใช้/ขาย</th><th>ยืม</th><th>โอน</th><th>ปรับยอด*</th><th>คงเหลือ</th><th>หน่วย</th></tr></thead><tbody>{importantRows.map((row) => <tr key={row.code}><td><strong>{row.code} · {row.name}</strong><small>{row.category}</small></td><td>{formatQty(row.opening)}</td><td>{row.received ? formatQty(row.received) : '-'}</td><td>{row.used ? formatQty(row.used) : '-'}</td><td>{row.borrowed ? formatQty(row.borrowed) : '-'}</td><td>{row.transferred ? formatQty(row.transferred) : '-'}</td><td className={row.adjustment < 0 ? 'change-down' : row.adjustment > 0 ? 'change-up' : ''}>{row.adjustment ? `${row.adjustment > 0 ? '+' : ''}${formatQty(row.adjustment)}` : '-'}</td><td><b>{formatQty(row.closing)}</b></td><td>{row.unit}</td></tr>)}</tbody></table></section><p className="report-note">* ปรับยอด/รอตรวจสอบ คือผลต่างที่ยังไม่มีเอกสารรับเข้า Stock รายวัน เบิก ยืม หรือโอนในระบบ เมื่อนำเข้าเอกสาร JERA ตัวเลขจะถูกแยกเข้าช่องที่ถูกต้อง</p></> : <section className="panel snapshot-empty"><Boxes/><h3>นำเข้าไฟล์ต้นงวดและไฟล์ล่าสุด</h3><p>ครั้งต่อไประบบจะจำยอดล่าสุดไว้เป็นต้นงวดให้โดยอัตโนมัติ</p></section>}
       </>}
       {view === 'monthly' && <>
       <div className="report-metrics">
@@ -1115,6 +1125,7 @@ function compareSnapshots(opening?: StockSnapshot, closing?: StockSnapshot) {
 }
 function formatSnapshotDate(date: string) { return new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${date}T00:00:00`)); }
 function formatShortDate(date: string) { const [year, month, day] = date.split('-'); return `${day}/${month}/${Number(year) + 543}`; }
+function formatQty(value: number) { return new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(value); }
 function printOperationalReport() {
   document.body.classList.add('operations-print');
   const cleanup = () => document.body.classList.remove('operations-print');

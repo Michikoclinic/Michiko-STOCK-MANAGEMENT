@@ -564,5 +564,12 @@
   body.operations-print .status{border:1px solid #aa8f8f!important;background:#efe2e1!important;color:#512f34!important}
   body.operations-print .report-mini{box-shadow:none!important;border:1px solid #cdbbb9!important;background:#f7eded!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
   body.operations-print .report-note{font-size:8pt!important}
+  body.operations-print .report-print-head{display:flex!important;align-items:center;gap:8mm;border-bottom:1.5px solid #7c414a;padding-bottom:4mm;margin-bottom:3mm}
+  body.operations-print .report-print-head img{width:38mm;height:20mm;object-fit:contain}
+  body.operations-print .report-print-head h2{font-size:15pt;margin:0 0 2mm;color:#4c3035}
+  body.operations-print .report-print-head p{font-size:8pt;margin:0;color:#725b5e}
+  body.operations-print .movement-summary-table{font-size:7.5pt!important}
+  body.operations-print .movement-summary-table,body.operations-print .report-metrics{font-family:Arial,'Noto Sans Thai',sans-serif!important;font-variant-numeric:tabular-nums}
+  body.operations-print .movement-summary-table th,body.operations-print .movement-summary-table td{padding:4px 5px!important}
   @page{size:A4 landscape;margin:8mm}
 }
