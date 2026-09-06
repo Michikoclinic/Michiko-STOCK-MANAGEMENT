@@ -7,6 +7,7 @@
   --cream: #fbf7f2;
   --line: #eadfde;
 }
+.auth-loading{min-height:100vh;display:grid;place-items:center;color:#805057;background:#fbf7f3}.stock-login{min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 20% 15%,#f6dddd 0,transparent 34%),#fbf7f3;padding:20px}.stock-login>section{width:min(420px,100%);background:#fff;border:1px solid #eadcda;border-radius:22px;padding:30px;box-shadow:0 24px 60px #754c5118;text-align:center}.login-logo{width:170px;height:84px;overflow:hidden;display:block;position:relative;margin:0 auto 10px}.login-logo img{position:absolute;width:280px;height:auto;left:-55px;top:-43px}.stock-login h1{font:600 23px Georgia,'Noto Sans Thai';margin:0;color:#422f32}.stock-login p{font-size:13px;color:#8b7375;margin:8px 0 22px}.stock-login form,.stock-login label{display:grid;text-align:left;gap:6px}.stock-login form{gap:14px}.stock-login label{font-size:12px;color:#765d60}.stock-login input{height:43px;border:1px solid #ddccca;border-radius:10px;padding:0 12px;font-size:15px;outline:none}.stock-login input:focus{border-color:#9a626a;box-shadow:0 0 0 3px #9a626a18}.stock-login button{height:44px;border:0;border-radius:11px;background:#7d4851;color:#fff;font-weight:700;font-size:14px}.stock-login button:disabled{opacity:.65}.login-error{font-size:12px;color:#ae3343;background:#fbe9ea;border-radius:8px;padding:9px}
 * {
   box-sizing: border-box;
 }

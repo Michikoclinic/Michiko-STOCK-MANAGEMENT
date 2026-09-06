@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import { useSharedStored } from '@/hooks/use-shared-stored';
 import {
   ArrowLeftRight,
   Boxes,
@@ -102,22 +103,6 @@ const initialProducts: Product[] = [
     expiry: '2026-09-24',
   },
 ];
-function useStored<T>(key: string, initial: T) {
-  const [value, setValue] = useState<T>(initial);
-  useEffect(() => {
-    const raw = localStorage.getItem(key);
-    if (raw)
-      try {
-        setValue(JSON.parse(raw));
-      } catch {}
-  }, [key]);
-  useEffect(
-    () => localStorage.setItem(key, JSON.stringify(value)),
-    [key, value],
-  );
-  return [value, setValue] as const;
-}
-
 export function OperationalPage({
   page,
   notify,
@@ -125,11 +110,11 @@ export function OperationalPage({
   page: string;
   notify: (s: string) => void;
 }) {
-  const [records, setRecords] = useStored<RecordRow[]>(
+  const [records, setRecords] = useSharedStored<RecordRow[]>(
     'michiko-operations',
     [],
   );
-  const [products, setProducts] = useStored<Product[]>(
+  const [products, setProducts] = useSharedStored<Product[]>(
     'michiko-products',
     initialProducts,
   );
@@ -902,7 +887,7 @@ function Reports({
   notify: (s: string) => void;
 }) {
   const [view, setView] = useState<'compare' | 'monthly'>('compare');
-  const [snapshots, setSnapshots] = useStored<StockSnapshot[]>('michiko-stock-snapshots', []);
+  const [snapshots, setSnapshots] = useSharedStored<StockSnapshot[]>('michiko-stock-snapshots', []);
   const openingInput = useRef<HTMLInputElement>(null);
   const latestInput = useRef<HTMLInputElement>(null);
   const sortedSnapshots = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));

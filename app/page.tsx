@@ -2,6 +2,9 @@
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { OperationalPage } from './operations';
+import { useSharedStored } from '@/hooks/use-shared-stored';
+import { supabase } from '@/lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 import {
   LayoutDashboard,
   PackageCheck,
@@ -133,25 +136,23 @@ const seed: Case[] = [
 const uid = () => crypto.randomUUID?.() || Math.random().toString(36).slice(2);
 
 export default function Home() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [page, setPage] = useState<string>(() =>
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('print')
       ? 'Stock รายวัน'
       : 'Dashboard',
   );
-  const [cases, setCases] = useState<Case[]>(seed);
+  const [cases, setCases] = useSharedStored<Case[]>('michiko-stock-cases', seed);
+  const [importHashes, setImportHashes] = useSharedStored<string[]>('michiko-stock-imports', []);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [toast, setToast] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const saved = localStorage.getItem('michiko-stock-cases');
-    if (saved)
-      try {
-        setCases(JSON.parse(saved));
-      } catch {}
+    void supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true); });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+    return () => data.subscription.unsubscribe();
   }, []);
-  useEffect(() => {
-    localStorage.setItem('michiko-stock-cases', JSON.stringify(cases));
-  }, [cases]);
   useEffect(() => {
     const registry = (document as Document & { modelContext?: ToolRegistry })
       .modelContext;
@@ -247,9 +248,6 @@ export default function Home() {
         { defval: '' },
       );
       const parsed = parseRows(rows);
-      const imported = JSON.parse(
-        localStorage.getItem('michiko-stock-imports') || '[]',
-      ) as string[];
       setPreview({
         fileName: file.name,
         hash,
@@ -257,7 +255,7 @@ export default function Home() {
         cases: parsed.cases,
         rows: parsed.rows,
         needsReview: parsed.needsReview,
-        duplicate: imported.includes(hash),
+        duplicate: importHashes.includes(hash),
       });
     } catch {
       notify('อ่านไฟล์ไม่สำเร็จ กรุณาตรวจรูปแบบ Excel หรือ CSV');
@@ -266,13 +264,7 @@ export default function Home() {
   const confirmImport = () => {
     if (!preview || preview.duplicate) return;
     setCases((prev) => [...preview.cases, ...prev]);
-    const hashes = JSON.parse(
-      localStorage.getItem('michiko-stock-imports') || '[]',
-    );
-    localStorage.setItem(
-      'michiko-stock-imports',
-      JSON.stringify([...hashes, preview.hash]),
-    );
+    setImportHashes((hashes) => [...hashes, preview.hash]);
     setPreview(null);
     setPage('Stock รายวัน');
     notify('นำเข้ารายงานเรียบร้อยแล้ว');
@@ -281,6 +273,8 @@ export default function Home() {
     setCases((x) => x.map((c) => (c.id === next.id ? next : c)));
   const removeCase = (id: string) =>
     setCases((x) => x.filter((c) => c.id !== id));
+  if (!authReady) return <div className="auth-loading">กำลังเชื่อมต่อฐานข้อมูลกลาง…</div>;
+  if (!session) return <StockLogin />;
   return (
     <main className="app-shell">
       <Sidebar page={page} select={selectPage} />
@@ -336,6 +330,20 @@ export default function Home() {
       )}
     </main>
   );
+}
+
+function StockLogin() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const login = async (event: React.FormEvent) => {
+    event.preventDefault(); setLoading(true); setMessage('');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setMessage('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    setLoading(false);
+  };
+  return <main className="stock-login"><section><span className="login-logo"><img src="/michiko-logo.png" alt="MICHIKO Aesthetics"/></span><h1>MICHIKO Stock Management</h1><p>เข้าสู่ระบบเพื่อใช้ข้อมูล Stock กลางของทั้ง 2 สาขา</p><form onSubmit={login}><label>อีเมล<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email"/></label><label>รหัสผ่าน<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password"/></label>{message && <div className="login-error">{message}</div>}<button disabled={loading}>{loading ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}</button></form></section></main>;
 }
 
 function Sidebar({
