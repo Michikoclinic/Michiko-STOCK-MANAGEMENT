@@ -1023,12 +1023,12 @@ function Preferences({ notify }: { notify: (s: string) => void }) {
         <div className="panel setting-card">
           <h3>รายชื่อผู้ช่วย</h3>
           {assistants.length ? assistants.map((name) => <p className="managed-name" key={name}><span>{name}</span><button onClick={() => setAssistants(assistants.filter((x) => x !== name))}>ลบ</button></p>) : <p>ยังไม่มีรายชื่อผู้ช่วย</p>}
-          <div className="name-entry"><input value={assistantName} onChange={(e) => setAssistantName(e.target.value)} placeholder="ชื่อผู้ช่วย"/><button onClick={() => addName(assistantName, assistants, setAssistants, setAssistantName)}><Plus size={14}/> เพิ่ม</button></div>
+          <form className="name-entry" onSubmit={(e) => { e.preventDefault(); addName(assistantName, assistants, setAssistants, setAssistantName); }}><input value={assistantName} onChange={(e) => setAssistantName(e.target.value)} placeholder="พิมพ์ชื่อผู้ช่วย"/><button type="submit"><Plus size={14}/> เพิ่มและบันทึก</button></form>
         </div>
         <div className="panel setting-card">
           <h3>รายชื่อแพทย์</h3>
           {doctors.length ? doctors.map((name) => <p className="managed-name" key={name}><span>{name}</span><button onClick={() => setDoctors(doctors.filter((x) => x !== name))}>ลบ</button></p>) : <p>ยังไม่มีรายชื่อแพทย์</p>}
-          <div className="name-entry"><input value={doctorName} onChange={(e) => setDoctorName(e.target.value)} placeholder="ชื่อแพทย์"/><button onClick={() => addName(doctorName, doctors, setDoctors, setDoctorName)}><Plus size={14}/> เพิ่ม</button></div>
+          <form className="name-entry" onSubmit={(e) => { e.preventDefault(); addName(doctorName, doctors, setDoctors, setDoctorName); }}><input value={doctorName} onChange={(e) => setDoctorName(e.target.value)} placeholder="พิมพ์ชื่อแพทย์"/><button type="submit"><Plus size={14}/> เพิ่มและบันทึก</button></form>
         </div>
         <div className="panel setting-card">
           <h3>ข้อมูลผู้ใช้งาน</h3>
