@@ -210,6 +210,10 @@ export default function Home() {
         { defval: '' },
       );
       const parsed = parseRows(rows);
+      if (!parsed.cases.length) {
+        notify('ไม่พบรายการ Stock Movement ในไฟล์นี้ หากเป็นไฟล์ยอดคงคลังให้นำเข้าที่เมนู Stock คงคลัง');
+        return;
+      }
       setPreview({
         fileName: file.name,
         hash,
@@ -332,7 +336,6 @@ function Sidebar({
           >
             <Icon size={18} />
             <span>{label}</span>
-            {label === 'ยืม / คืน' && <em>3</em>}
           </button>
         ))}
       </nav>

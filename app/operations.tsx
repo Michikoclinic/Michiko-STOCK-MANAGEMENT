@@ -159,14 +159,12 @@ function TransactionPage({
   setRecords,
   products,
   notify,
-  dailyCases,
 }: {
   page: string;
   records: RecordRow[];
   setRecords: (v: RecordRow[] | ((p: RecordRow[]) => RecordRow[])) => void;
   products: Product[];
   notify: (s: string) => void;
-  dailyCases: Array<{ date: string; items: Array<{ name: string; qty: number }> }>;
 }) {
   const cfg = configs[page] || configs['รับเข้า'];
   const Icon = cfg.icon;
@@ -184,8 +182,10 @@ function TransactionPage({
     note: '',
     lot: '',
     exp: '',
+    movementType: page === 'ยืม / คืน' ? 'ยืม' : cfg.type,
   });
-  const rows = records.filter((r) => r.type === cfg.type);
+  const branchTradeTypes = ['ยืม', 'คืน', 'ซื้อจากสาขา', 'ขายให้สาขา'];
+  const rows = records.filter((r) => page === 'ยืม / คืน' ? branchTradeTypes.includes(r.type) : r.type === cfg.type);
   const save = () => {
     if (!form.product || form.qty <= 0) return;
     if (
@@ -196,7 +196,7 @@ function TransactionPage({
       return;
     }
     setRecords((p) => [
-      { id: id(), ...form, type: cfg.type, status: cfg.status },
+      { id: id(), ...form, type: form.movementType, status: form.movementType === 'ยืม' ? 'รอคืน' : form.movementType === 'คืน' ? 'คืนแล้ว' : 'บันทึกแล้ว' },
       ...p,
     ]);
     setOpen(false);
@@ -214,6 +214,7 @@ function TransactionPage({
       {open && (
         <section className="ops-form panel">
           <div className="form-grid">
+            {page === 'ยืม / คืน' && <Field label="ประเภทรายการ"><select value={form.movementType} onChange={(e) => setForm({ ...form, movementType: e.target.value })}><option>ยืม</option><option>คืน</option><option>ซื้อจากสาขา</option><option>ขายให้สาขา</option></select></Field>}
             <Field label="วันที่">
               <ThaiDateInput value={form.date} onChange={(date) => setForm({ ...form, date })} />
             </Field>
@@ -326,17 +327,23 @@ function RecordTable({
   page: string;
   setRecords: (v: RecordRow[] | ((p: RecordRow[]) => RecordRow[])) => void;
 }) {
+  const [query, setQuery] = useState('');
+  const filteredRows = rows.filter((row) => `${row.product} ${row.party} ${row.note} ${row.type}`.toLowerCase().includes(query.toLowerCase()));
+  const exportRows = () => {
+    const data = filteredRows.map((row, index) => ({ วันที่: formatShortDate(row.date), เลขที่เอกสาร: docNo(row.type, index), ประเภท: row.type, สินค้า: row.product, จำนวน: row.qty, หน่วย: row.unit, สาขา: row.branch, รายละเอียด: row.party, หมายเหตุ: row.note, สถานะ: row.status }));
+    const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(data), 'รายการ'); XLSX.writeFile(workbook, `michiko_${page}_${today()}.xlsx`);
+  };
   return (
     <section className="ops-table panel">
       <div className="ops-toolbar">
         <label>
           <Search size={16} />
-          <input placeholder="ค้นหารายการ..." />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="พิมพ์ค้นหาสินค้า ประเภท หรือสาขา..." />
         </label>
         <button onClick={printOperationalReport}>
           <Printer size={15} /> พิมพ์
         </button>
-        <button>
+        <button onClick={exportRows}>
           <FileDown size={15} /> Export Excel
         </button>
       </div>
@@ -352,10 +359,10 @@ function RecordTable({
           </tr>
         </thead>
         <tbody>
-          {rows.length ? (
-            rows.map((r, i) => (
+          {filteredRows.length ? (
+            filteredRows.map((r, i) => (
               <tr key={r.id}>
-                <td>{r.date}</td>
+                <td>{formatShortDate(r.date)}</td>
                 <td>{docNo(r.type, i)}</td>
                 <td>
                   <strong>{r.product}</strong>
@@ -885,6 +892,28 @@ function Reports({
     .filter((r) => ['เบิกออก', 'โอนย้าย', 'ยืม'].includes(r.type))
     .reduce((n, r) => n + r.qty, 0);
   const categories = [...new Set(products.map((p) => p.category))];
+  const stockAt = (snapshot: StockSnapshot | undefined, product: Product) => snapshot?.items.find((item) => item.code === product.code || normalizeName(item.name) === normalizeName(product.name))?.stock;
+  const accountingRow = (product: Product) => {
+    const opening = stockAt(openingSnapshot, product) ?? 0, closing = stockAt(closingSnapshot, product) ?? product.stock;
+    const received = movement(product.name, ['รับเข้า', 'ซื้อจากสาขา']);
+    const transferred = movement(product.name, ['โอนย้าย', 'ขายให้สาขา']);
+    const borrowed = movement(product.name, ['ยืม']);
+    const returned = movement(product.name, ['คืน']);
+    const issued = movement(product.name, ['เบิกออก']);
+    const used = dailyCases.filter((daily) => inPeriod(daily.date)).reduce((sum, daily) => sum + daily.items.filter((item) => normalizeName(item.name) === normalizeName(product.name)).reduce((n, item) => n + Number(item.qty || 0), 0), 0) + issued;
+    const adjustment = closing - (opening - used - transferred - borrowed + received + returned);
+    return { product, opening, used, transferred: transferred + borrowed, received, adjustment: adjustment + returned, closing };
+  };
+  const accountingRows = products.map(accountingRow);
+  const exportMonthly = () => {
+    const sheetRows: (string | number)[][] = [['ลำดับ','สินค้า','ยอดคงคลังเดิม','จำนวนที่ใช้/ขายไป','จำนวนที่โอนย้าย','ยอดรับเข้า','ปรับยอด/คืน','ยอดคงคลังสิ้นเดือน','Exp.','หมายเหตุ']];
+    for (const category of categories) {
+      sheetRows.push([category,'','','','','','','','','']);
+      accountingRows.filter((row) => row.product.category === category).forEach((row, index) => sheetRows.push([index + 1,row.product.name,row.opening,row.used || 0,row.transferred || 0,row.received || 0,row.adjustment || 0,row.closing,row.product.expiry || '',row.product.note || '']));
+    }
+    const sheet = XLSX.utils.aoa_to_sheet(sheetRows); sheet['!cols'] = [{wch:8},{wch:42},{wch:15},{wch:18},{wch:16},{wch:13},{wch:15},{wch:19},{wch:24},{wch:28}];
+    const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'รายงานสต็อคคงคลัง'); XLSX.writeFile(workbook, `รายงานสต็อคคงคลัง_${closingSnapshot?.date || today()}.xlsx`);
+  };
   return (
     <>
       <PageHead
@@ -902,7 +931,7 @@ function Reports({
       {view === 'monthly' && <>
       <div className="report-metrics">
         <Mini title="ยอดรับเข้า" value={`+ ${incoming}`} />
-        <Mini title="Stock รายวัน" value="- 32" />
+        <Mini title="Stock รายวัน" value={`- ${accountingRows.reduce((sum, row) => sum + row.used, 0)}`} />
         <Mini title="เบิก / โอนออก" value={`- ${outgoing}`} />
         <Mini
           title="Stock คงเหลือ"
@@ -917,7 +946,7 @@ function Reports({
           <button onClick={printOperationalReport}>
             <Printer size={15} /> พิมพ์รายงาน
           </button>
-          <button>
+          <button onClick={exportMonthly}>
             <FileDown size={15} /> Export Excel
           </button>
         </div>
@@ -942,13 +971,8 @@ function Reports({
               return [
                 <tr className="category-row" key={`cat-${category}`}><td colSpan={10}>{category}</td></tr>,
                 ...list.map((p, index) => {
-                  const received = movement(p.name, ['รับเข้า']);
-                  const transferred = movement(p.name, ['โอนย้าย']);
-                  const issued = movement(p.name, ['เบิกออก']);
-                  const borrowed = movement(p.name, ['ยืม']);
-                  const used = issued + borrowed;
-                  const opening = p.stock + used + transferred - received;
-                  return <tr key={p.id}><td>{index + 1}</td><td><strong>{p.name}</strong><small>{p.unit}</small></td><td>{opening}</td><td>{used || '-'}</td><td>{transferred || '-'}</td><td>{received || '-'}</td><td>-</td><td><b>{p.stock}</b> {p.unit}</td><td>{p.expiry || '-'}</td><td>{p.note || '-'}</td></tr>;
+                  const row = accountingRow(p);
+                  return <tr key={p.id}><td>{index + 1}</td><td><strong>{p.name}</strong><small>{p.unit}</small></td><td>{formatQty(row.opening)}</td><td>{row.used ? formatQty(row.used) : '-'}</td><td>{row.transferred ? formatQty(row.transferred) : '-'}</td><td>{row.received ? formatQty(row.received) : '-'}</td><td>{row.adjustment ? formatQty(row.adjustment) : '-'}</td><td><b>{formatQty(row.closing)}</b> {p.unit}</td><td>{p.expiry || '-'}</td><td>{p.note || '-'}</td></tr>;
                 }),
               ];
             })}
