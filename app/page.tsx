@@ -994,7 +994,9 @@ function parseRows(rows: Record<string, unknown>[]) {
     new Date().toISOString().slice(0, 10);
   const groups = new Map<string, Case>();
   for (const r of valid) {
-    const key = [r.hn || r.patient, r.doctor, r.program].join('|');
+    // JERA exports one row per stock item. A patient can therefore have several
+    // services and medicines on the same visit; keep all of them in one case.
+    const key = r.hn || r.patient;
     if (!groups.has(key))
       groups.set(key, {
         id: uid(),
@@ -1008,15 +1010,22 @@ function parseRows(rows: Record<string, unknown>[]) {
         backdated: date < new Date().toISOString().slice(0, 10),
         needsReview: !r.hn || !r.doctor || !r.program,
       });
-    groups
-      .get(key)!
-      .items.push({
-        id: uid(),
-        name: r.stock,
-        qty: Math.abs(Number(String(r.qty).replace(/,/g, ''))) || 1,
-        unit: r.unit || 'อัน',
-        source: 'report',
-      });
+    const current = groups.get(key)!;
+    if (r.program && !current.program.split(' / ').includes(r.program)) {
+      current.program = current.program ? `${current.program} / ${r.program}` : r.program;
+    }
+    const quantity = Math.abs(Number(String(r.qty).replace(/,/g, ''))) || 1;
+    const existingItem = current.items.find(
+      (item) => item.name === r.stock && item.unit === (r.unit || 'อัน'),
+    );
+    if (existingItem) existingItem.qty += quantity;
+    else current.items.push({
+      id: uid(),
+      name: r.stock,
+      qty: quantity,
+      unit: r.unit || 'อัน',
+      source: 'report',
+    });
   }
   const cases = [...groups.values()];
   return {
