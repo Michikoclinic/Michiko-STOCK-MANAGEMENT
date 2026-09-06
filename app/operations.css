@@ -266,6 +266,7 @@
   align-items: center;
   gap: 5px;
 }
+.name-entry{display:flex;gap:6px;margin-top:12px}.name-entry input{min-width:0;flex:1;height:34px;border:1px solid #d8c4c2;border-radius:9px;padding:0 9px}.name-entry button{margin-top:0}.managed-name{display:flex;align-items:center;justify-content:space-between}.managed-name button{margin:0!important;border:0!important;height:auto!important;color:#a34e59!important;background:transparent!important}
 @media (max-width: 1050px) {
   .form-grid {
     grid-template-columns: repeat(2, 1fr);

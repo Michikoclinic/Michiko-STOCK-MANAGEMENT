@@ -593,7 +593,8 @@ body {
   .usage-body {
     grid-template-columns: 1fr;
   }
-  .donut {
+.donut {
     display: none;
   }
 }
+.thai-date-input{display:grid;grid-template-columns:.75fr 1fr 1fr;gap:5px}.thai-date-input select{min-width:0;height:37px;border:1px solid #dfd1cf;border-radius:9px;background:#fff;padding:0 6px;color:var(--ink)}

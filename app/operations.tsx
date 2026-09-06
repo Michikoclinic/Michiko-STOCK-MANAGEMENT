@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { useSharedStored } from '@/hooks/use-shared-stored';
+import { ThaiDateInput } from '@/components/thai-date-input';
 import {
   ArrowLeftRight,
   Boxes,
@@ -56,53 +57,7 @@ const branches = [
   'MICHIKO สาขา Emsphere',
   'MICHIKO สาขาพหลโยธิน',
 ];
-const initialProducts: Product[] = [
-  {
-    id: 'p1',
-    code: 'FL-001',
-    name: 'Restylane Kysse',
-    category: 'Filler',
-    unit: 'cc',
-    minimum: 10,
-    active: true,
-    stock: 3,
-    expiry: '2026-10-31 (3 cc)',
-    note: 'มีของการตลาด 1 cc',
-  },
-  {
-    id: 'p2',
-    code: 'BT-001',
-    name: 'Bienox',
-    category: 'Botox',
-    unit: 'ขวด',
-    minimum: 5,
-    active: true,
-    stock: 2,
-    expiry: '2026-09-04 (850 Unit)',
-  },
-  {
-    id: 'p3',
-    code: 'EQ-022',
-    name: 'Cannula 22G',
-    category: 'อุปกรณ์',
-    unit: 'อัน',
-    minimum: 20,
-    active: true,
-    stock: 5,
-    expiry: '2028-03-18 (40 อัน)',
-  },
-  {
-    id: 'p4',
-    code: 'EQ-001',
-    name: 'Syringe 1 ml',
-    category: 'อุปกรณ์',
-    unit: 'อัน',
-    minimum: 20,
-    active: true,
-    stock: 8,
-    expiry: '2026-09-24',
-  },
-];
+const initialProducts: Product[] = [];
 export function OperationalPage({
   page,
   notify,
@@ -257,11 +212,7 @@ function TransactionPage({
         <section className="ops-form panel">
           <div className="form-grid">
             <Field label="วันที่">
-              <input
-                type="date"
-                value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-              />
+              <ThaiDateInput value={form.date} onChange={(date) => setForm({ ...form, date })} />
             </Field>
             <Field
               label={
@@ -282,21 +233,18 @@ function TransactionPage({
               </select>
             </Field>
             <Field label="รายการสินค้า">
-              <select
+              <input list="transaction-products"
                 value={form.product}
                 onChange={(e) => {
-                  const p = products.find((x) => x.name === e.target.value);
+                  const p = products.find((x) => x.name === e.target.value || `${x.code} — ${x.name}` === e.target.value);
                   setForm({
                     ...form,
-                    product: e.target.value,
+                    product: p?.name || e.target.value,
                     unit: p?.unit || form.unit,
                   });
                 }}
-              >
-                {products.map((p) => (
-                  <option key={p.id}>{p.name}</option>
-                ))}
-              </select>
+                placeholder="พิมพ์รหัสหรือชื่อสินค้า" />
+              <datalist id="transaction-products">{products.map((p) => <option key={p.id} value={`${p.code} — ${p.name}`} />)}</datalist>
             </Field>
             <Field label="จำนวน">
               <input
@@ -342,11 +290,7 @@ function TransactionPage({
                   />
                 </Field>
                 <Field label="วันหมดอายุ">
-                  <input
-                    type="date"
-                    value={form.exp}
-                    onChange={(e) => setForm({ ...form, exp: e.target.value })}
-                  />
+                  <ThaiDateInput value={form.exp} onChange={(exp) => setForm({ ...form, exp })} />
                 </Field>
               </>
             )}
@@ -485,6 +429,7 @@ function Inventory({
     expiry: '',
     note: '',
   });
+  const [productQuery, setProductQuery] = useState(products[0]?.name || '');
   const list = products.filter((p) =>
     p.name.toLowerCase().includes(q.toLowerCase()),
   );
@@ -664,15 +609,14 @@ function Inventory({
               </select>
             </Field>
             <Field label="สินค้า">
-              <select
-                value={form.productId}
+              <input list="inventory-products" value={productQuery}
                 onChange={(e) => {
-                  const product = products.find((p) => p.id === e.target.value);
-                  setForm({ ...form, productId: e.target.value, stock: product?.stock || 0 });
+                  const query = e.target.value; setProductQuery(query);
+                  const product = products.find((p) => p.name === query || `${p.code} — ${p.name}` === query);
+                  if (product) { setProductQuery(product.name); setForm({ ...form, productId: product.id, stock: product.stock }); }
                 }}
-              >
-                {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+                placeholder="พิมพ์รหัสหรือชื่อสินค้า" />
+              <datalist id="inventory-products">{products.map((p) => <option key={p.id} value={`${p.code} — ${p.name}`} />)}</datalist>
             </Field>
             <Field label="ยอดคงเหลือจริง">
               <input type="number" min="0" step="0.01" value={form.stock} onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })} />
@@ -684,7 +628,7 @@ function Inventory({
               <input value={form.lot} onChange={(e) => setForm({ ...form, lot: e.target.value })} />
             </Field>
             <Field label="Exp.">
-              <input type="date" value={form.expiry} onChange={(e) => setForm({ ...form, expiry: e.target.value })} />
+              <ThaiDateInput value={form.expiry} onChange={(expiry) => setForm({ ...form, expiry })} />
             </Field>
             <Field label="หมายเหตุ">
               <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น ของการตลาด" />
@@ -1018,6 +962,14 @@ function Movements({ records }: { records: RecordRow[] }) {
   );
 }
 function Preferences({ notify }: { notify: (s: string) => void }) {
+  const [assistants, setAssistants] = useSharedStored<string[]>('michiko-assistants', []);
+  const [doctors, setDoctors] = useSharedStored<string[]>('michiko-doctors', []);
+  const [assistantName, setAssistantName] = useState('');
+  const [doctorName, setDoctorName] = useState('');
+  const addName = (value: string, list: string[], save: (value: string[]) => void, clear: (value: string) => void) => {
+    const name = value.trim(); if (!name || list.includes(name)) return;
+    save([...list, name]); clear(''); notify(`เพิ่ม ${name} แล้ว`);
+  };
   return (
     <>
       <PageHead
@@ -1036,10 +988,13 @@ function Preferences({ notify }: { notify: (s: string) => void }) {
         </div>
         <div className="panel setting-card">
           <h3>รายชื่อผู้ช่วย</h3>
-          <p>แพรว · เมย์ · น้ำ · ปุ้ย · เฟิร์น · ออม</p>
-          <button>
-            <Plus size={14} /> เพิ่มพนักงาน
-          </button>
+          {assistants.length ? assistants.map((name) => <p className="managed-name" key={name}><span>{name}</span><button onClick={() => setAssistants(assistants.filter((x) => x !== name))}>ลบ</button></p>) : <p>ยังไม่มีรายชื่อผู้ช่วย</p>}
+          <div className="name-entry"><input value={assistantName} onChange={(e) => setAssistantName(e.target.value)} placeholder="ชื่อผู้ช่วย"/><button onClick={() => addName(assistantName, assistants, setAssistants, setAssistantName)}><Plus size={14}/> เพิ่ม</button></div>
+        </div>
+        <div className="panel setting-card">
+          <h3>รายชื่อแพทย์</h3>
+          {doctors.length ? doctors.map((name) => <p className="managed-name" key={name}><span>{name}</span><button onClick={() => setDoctors(doctors.filter((x) => x !== name))}>ลบ</button></p>) : <p>ยังไม่มีรายชื่อแพทย์</p>}
+          <div className="name-entry"><input value={doctorName} onChange={(e) => setDoctorName(e.target.value)} placeholder="ชื่อแพทย์"/><button onClick={() => addName(doctorName, doctors, setDoctors, setDoctorName)}><Plus size={14}/> เพิ่ม</button></div>
         </div>
         <div className="panel setting-card">
           <h3>ข้อมูลผู้ใช้งาน</h3>

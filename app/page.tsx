@@ -5,6 +5,7 @@ import { OperationalPage } from './operations';
 import { useSharedStored } from '@/hooks/use-shared-stored';
 import { supabase } from '@/lib/supabase';
 import type { Session } from '@supabase/supabase-js';
+import { ThaiDateInput } from '@/components/thai-date-input';
 import {
   LayoutDashboard,
   PackageCheck,
@@ -80,7 +81,6 @@ type ToolRegistry = {
     options: { signal: AbortSignal },
   ) => void | Promise<void>;
 };
-const staff = ['แพรว', 'เมย์', 'น้ำ', 'ปุ้ย', 'เฟิร์น', 'ออม'];
 const menu = [
   ['Dashboard', LayoutDashboard],
   ['Stock รายวัน', PackageCheck],
@@ -95,60 +95,22 @@ const menu = [
   ['ประวัติการเคลื่อนไหว', History],
   ['ตั้งค่า', Settings],
 ] as const;
-const seed: Case[] = [
-  {
-    id: 'c1',
-    date: '2026-09-06',
-    hn: 'EM001234',
-    patient: 'คุณพิมพ์ชนก สุขใจ',
-    doctor: 'หมอกิ๊ฟ',
-    program: 'Filler',
-    assistants: ['แพรว'],
-    backdated: false,
-    needsReview: false,
-    items: [
-      {
-        id: 'i1',
-        name: 'Restylane Kysse',
-        qty: 1,
-        unit: 'cc',
-        source: 'report',
-      },
-      { id: 'i2', name: 'Cannula 22G', qty: 1, unit: 'อัน', source: 'manual' },
-    ],
-  },
-  {
-    id: 'c2',
-    date: '2026-09-06',
-    hn: 'EM001208',
-    patient: 'คุณณัฐชา กิตติกุล',
-    doctor: 'หมอเบนซ์',
-    program: 'Botox',
-    assistants: ['เมย์'],
-    backdated: false,
-    needsReview: false,
-    items: [
-      { id: 'i3', name: 'Bienox', qty: 1, unit: 'ขวด', source: 'report' },
-      { id: 'i4', name: 'Syringe 1 ml', qty: 2, unit: 'อัน', source: 'manual' },
-    ],
-  },
-];
+const seed: Case[] = [];
 const uid = () => crypto.randomUUID?.() || Math.random().toString(36).slice(2);
 
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [page, setPage] = useState<string>(() =>
-    typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('print')
-      ? 'Stock รายวัน'
-      : 'Dashboard',
-  );
+  const [page, setPage] = useState<string>('Dashboard');
   const [cases, setCases] = useSharedStored<Case[]>('michiko-stock-cases', seed);
   const [importHashes, setImportHashes] = useSharedStored<string[]>('michiko-stock-imports', []);
+  const [assistants] = useSharedStored<string[]>('michiko-assistants', []);
+  const [doctors] = useSharedStored<string[]>('michiko-doctors', []);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [toast, setToast] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
+    if (window.location.search) window.history.replaceState({}, '', window.location.pathname);
     void supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true); });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
     return () => data.subscription.unsubscribe();
@@ -294,6 +256,8 @@ export default function Home() {
               remove={removeCase}
               openImport={() => fileRef.current?.click()}
               notify={notify}
+              assistants={assistants}
+              doctors={doctors}
             />
           ) : (
             <OperationalPage page={page} notify={notify} />
@@ -508,18 +472,20 @@ function Daily({
   remove,
   openImport,
   notify,
+  assistants,
+  doctors,
 }: {
   cases: Case[];
   update: (c: Case) => void;
   remove: (id: string) => void;
   openImport: () => void;
   notify: (s: string) => void;
+  assistants: string[];
+  doctors: string[];
 }) {
   const [query, setQuery] = useState('');
   const [date, setDate] = useState('');
-  const [showPrint, setShowPrint] = useState(
-    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('print'),
-  );
+  const [showPrint, setShowPrint] = useState(false);
   const filtered = cases.filter(
     (c) =>
       (!date || c.date === date) &&
@@ -553,11 +519,7 @@ function Daily({
             placeholder="ค้นหาชื่อ, HN, แพทย์ หรือโปรแกรม"
           />
         </label>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
+        <ThaiDateInput value={date} onChange={setDate} />
         <span>
           พบ {filtered.length} เคส ·{' '}
           {filtered.reduce((n, c) => n + c.items.length, 0)} รายการ
@@ -573,6 +535,8 @@ function Daily({
               update={update}
               remove={remove}
               notify={notify}
+              assistants={assistants}
+              doctors={doctors}
             />
           ))}
         </div>
@@ -656,12 +620,16 @@ function CaseCard({
   update,
   remove,
   notify,
+  assistants,
+  doctors,
 }: {
   data: Case;
   number: number;
   update: (c: Case) => void;
   remove: (id: string) => void;
   notify: (s: string) => void;
+  assistants: string[];
+  doctors: string[];
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data);
@@ -738,10 +706,11 @@ function CaseCard({
           <Stethoscope size={16} />
           <span>แพทย์</span>
           {editing ? (
-            <input
-              value={draft.doctor}
-              onChange={(e) => setDraft({ ...draft, doctor: e.target.value })}
-            />
+            <select value={draft.doctor} onChange={(e) => setDraft({ ...draft, doctor: e.target.value })}>
+              <option value="">เลือกแพทย์</option>
+              {draft.doctor && !doctors.includes(draft.doctor) && <option>{draft.doctor}</option>}
+              {doctors.map((doctor) => <option key={doctor}>{doctor}</option>)}
+            </select>
           ) : (
             <strong>{data.doctor || 'รอตรวจสอบ'}</strong>
           )}
@@ -791,7 +760,7 @@ function CaseCard({
                 }
               >
                 <option value="">+ เพิ่มผู้ช่วย</option>
-                {staff.map((s) => (
+                {assistants.filter((s) => !draft.assistants.includes(s)).map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
@@ -1030,8 +999,8 @@ function normalizeDate(v: string) {
 function formatDate(s: string) {
   if (!s) return 'ไม่พบวันที่';
   return new Intl.DateTimeFormat('th-TH', {
-    day: 'numeric',
-    month: 'long',
+    day: '2-digit',
+    month: '2-digit',
     year: 'numeric',
   }).format(new Date(`${s}T00:00:00`));
 }
