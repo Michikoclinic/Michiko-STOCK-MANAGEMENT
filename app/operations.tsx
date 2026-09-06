@@ -13,7 +13,6 @@ import {
   ClipboardPlus,
   FileDown,
   FileUp,
-  HandCoins,
   History,
   PackageMinus,
   Plus,
@@ -62,6 +61,25 @@ const branches = [
   'MICHIKO สาขาพหลโยธิน',
 ];
 const initialProducts: Product[] = [];
+const accountingTemplate = [
+  ['Restylane', 'Defyne|Volyme|Kysses|Vital|Vital light|Lyft|Classic'],
+  ['Flore', 'Max|Max 1400|N|S|Aqua-S'],
+  ['Hyabell', 'Basic|Lip|Deep|Ultra|Meso'],
+  ['Volifil', 'Classic|Deep|Sub - Q'],
+  ['Belotero', 'Intense|Volume|Sculptra (ขวด)|Radiesse (กล่อง)'],
+  ['ยาสลายฟิลเลอร์', 'Liporase'],
+  ['Botox', 'Dysport (S.U.)|Allergan (Unit)|Bienox (Unit)|Xeomin (Unit)'],
+  ['Meso fat', 'Lipolytic (ขวด)|Red Lava (ขวด)|Neobella (ขวด)'],
+  ['Meso Glitter', 'Glitter (ml.)|Derma Care (ml.)|Transamine (ml.)|Depigment (ml.)'],
+  ['Cell Detox', 'Bio Centa (Amp)|REPLAY Placenta Skin (ขวด)|REJU Growth Factors (ขวด)'],
+  ['วิตามิน', 'B complex (Amp.)|B6 pyridoxine (Amp.)|B12 Methylcobal (Amp.)|B12 (Amp.)|Vitamin C (Amp.)|7.5%Sodium Bicarbonate (Amp.)|Acetin 300 mg (Amp.)|50% Magnesium Sulfate (Amp.)|Lipotocin ALA 300 mg (Amp.)|Glutathione 600 mg (Amp.)|Glutathione 1200 mg (Amp.)|Calcium Gluconate(Amp.)|Ubiquinone (Amp.)|Folic (10mg/ml) (30 ml/ขวด) (ml)|Dexpanthenol (250mg/ml) (30 ml/ขวด) (ml)|Zinc sulfate (10mg/ml) (30 ml/ขวด) (ml)|Inositol (50mg/ml (30 ml/ขวด) (ml)|MTE-5(10mg/ml) (10 ml/ขวด) (ml)|Biotin inj. (Amp)|Vitamin D3 (300,000 iU/1.5ml) (Amp)|Cerebrolysin IV|Selenium (200mcg/ml) (30ml/ขวด) (ml)|Potassium Chlorride (Amp)|EDTA (3g/10ml) (ml)|InfiNADi NAD+ IV|Fluimucil 300 mg|NAD+Up 250 mg (Vial)|Polilevo|NeoAmiyu (ถุง)|L-carnitine 1000mg/amp (Amp)|Beecalfor Calcium inj. (10x3ml) (Amp)|Beecalfor Vitamin B complex inj. (10x2 ml) (Amp)|Vitamin K3 inj. (Amp)|L-Arginine inj. 0.6 mg/Vial (Vial)'],
+  ['เวชภัณฑ์', 'Three way Stop Clock|Blunt Canula no.22G|Blunt Canula no.25G|Nipro 18G 1" (100 อัน/กล่อง)|Nipro 21G 1" (100 อัน/กล่อง)|Nipro 25G 1" (100 อัน/กล่อง)|Nipro 27G 1" (100 อัน/กล่อง)|Nipro 30G 1/2" (100 อัน/กล่อง)|Nipro Safelet Cath 24 G3/4" (50อัน/กล่อง)|Nipro หัวล็อค 5 ml|เข็มปีกผีเสื้อ24G (50 อัน/กล่อง)|เข็มปีกผีเสื้อ25G (50 อัน/กล่อง)|Syringe 1 CC (100 อัน/กล่อง)|Syringe 3 CC (100 อัน/กล่อง)|Syringe 5 CC (100 อัน/กล่อง)|Syringe 10 CC (100 อัน/กล่อง)|Syringe 20 CC (100 อัน/กล่อง)|Insulin Syringe 100 u|ชุดสายให้น้ำเกลือ BMI (IV Set)|ถุงมือ size S (ไม่มีแป้ง)|ถุงมือ size M|สำลีแผ่น (500g /ห่อ)|สำลีก้อน 0.35g (450g)|ไม้พันสำลี Size M|Cotton bud|ผ้าก๊อซพับ 3"x3"|ผ้าก๊อซ Sterile 4x4'],
+  ['น้ำเกลือ', 'NSS 5 ml|NSS 100 ml|NSS 250 ml|NSS 500 ml|D5W 100 ml|D5W 250 ml|D5W 500 ml|Steri Water 10 ml/amp'],
+  ['วิตามิน', 'Skin Glow|Liver & Kidney Detox|Stress Relax|Melatonin IX/RX|Digestzyme|RxOmega-3 Ultra Strength|Glycine|Super Synbiotic 18 strains 60 billion CFU|วิตามิน Strong Immunity Essential Formula|วิตามิน Strong Immunity Intensive Formula'],
+  ['ครีม', 'Diamond White TM4 Cream|Peptide Liked Anti-Aging Serum|UV Sunscreen Gel SPF60 PA+++ (50ml)|Cleansing Water - Doctor Formula (100ml)|Cleansing Water - Doctor Formula (500ml)|Milky Soap - Doctor Formula (50ml)|Milky Soap - Doctor Formula (150ml)|Aura Skin Whitening Lotion - Doctor Formula|Aloe Vera Cream|Plankton Essence mini|Plankton Essence|Cica Moist Cream 30G|Anti Melasma Spot Cream'],
+  ['ยาสิว', 'Arnicare Bruise|Arnicare 30C|Arnica Gel & Oral|Terramycin ointment|Anti P.Acne|Anti Bac & Yeast|Anti Comedones|Anti Acne Spot Gel|DARK Spot Reduction|Eczema Relief|Sebcare|DARK Spot Reduction X2'],
+  ['หัวเครื่องยกกระชับ', 'Ulthera 3.0 MM|Ulthera 4.5 MM|Ultraformer III Cartridge 1.5 MM|Ultraformer III Cartridge 2.0 MM|Ultraformer III Cartridge 3.0 MM|Ultraformer III Cartridge 4.5 MM|Xerf Effector 60 (600)|Xerf Grounding Plate|Xerf Gas LUT-ICD'],
+] as const;
 export function OperationalPage({
   page,
   notify,
@@ -124,21 +142,13 @@ const configs: Record<
     party: 'Supplier / ที่มา',
     status: 'รับเข้าแล้ว',
   },
-  โอนย้ายสาขา: {
+  'โอนย้าย / ยืมคืน': {
     icon: ArrowLeftRight,
-    title: 'โอนย้ายสาขา',
-    sub: 'ย้าย Stock แบบถาวรและรอให้สาขาปลายทางยืนยันรับ',
+    title: 'รายการระหว่างสาขา',
+    sub: 'โอนย้าย ยืม คืน และซื้อ–ขาย Stock ระหว่าง 2 สาขาในหน้าเดียว',
     type: 'โอนย้าย',
-    party: 'ไปสาขา',
+    party: 'สาขาปลายทาง',
     status: 'รอรับ',
-  },
-  'ยืม / คืน': {
-    icon: HandCoins,
-    title: 'ยืม / คืนระหว่างสาขา',
-    sub: 'ติดตามจำนวนยืม คืนแล้ว และยอดค้างคืน',
-    type: 'ยืม',
-    party: 'สาขาที่ยืม',
-    status: 'รอคืน',
   },
   เบิกออก: {
     icon: PackageMinus,
@@ -180,7 +190,7 @@ function TransactionPage({
     qty: 1,
     unit: products[0]?.unit || 'อัน',
     party:
-      page === 'ยืม / คืน' || page === 'โอนย้ายสาขา'
+      page === 'โอนย้าย / ยืมคืน'
         ? 'MICHIKO สาขาพหลโยธิน'
         : '',
     note: '',
@@ -188,12 +198,12 @@ function TransactionPage({
     mfg: '',
     exp: '',
     attachment: '',
-    movementType: page === 'ยืม / คืน' ? 'ยืม' : cfg.type,
+    movementType: cfg.type,
   });
   const [receiveDrafts, setReceiveDrafts] = useState<ReceiveDraft[]>([]);
   const receiveFileRef = useRef<HTMLInputElement>(null);
-  const branchTradeTypes = ['ยืม', 'คืน', 'ซื้อจากสาขา', 'ขายให้สาขา'];
-  const rows = records.filter((r) => page === 'ยืม / คืน' ? branchTradeTypes.includes(r.type) : r.type === cfg.type);
+  const branchTradeTypes = ['โอนย้าย', 'ยืม', 'คืน', 'ซื้อจากสาขา', 'ขายให้สาขา'];
+  const rows = records.filter((r) => page === 'โอนย้าย / ยืมคืน' ? branchTradeTypes.includes(r.type) : r.type === cfg.type);
   const save = () => {
     if (page === 'รับเข้า' && receiveDrafts.length) {
       setRecords((current) => [
@@ -211,14 +221,14 @@ function TransactionPage({
     }
     if (!form.product || form.qty <= 0) return;
     if (
-      (page === 'ยืม / คืน' || page === 'โอนย้ายสาขา') &&
+      page === 'โอนย้าย / ยืมคืน' &&
       form.branch === form.party
     ) {
       notify('กรุณาเลือกสาขาต้นทางและปลายทางให้ต่างกัน');
       return;
     }
     setRecords((p) => [
-      { id: id(), ...form, type: form.movementType, status: form.movementType === 'ยืม' ? 'รอคืน' : form.movementType === 'คืน' ? 'คืนแล้ว' : 'บันทึกแล้ว' },
+      { id: id(), ...form, type: form.movementType, status: form.movementType === 'โอนย้าย' ? 'รอรับ' : form.movementType === 'ยืม' ? 'รอคืน' : form.movementType === 'คืน' ? 'คืนแล้ว' : 'บันทึกแล้ว' },
       ...p,
     ]);
     setOpen(false);
@@ -252,17 +262,13 @@ function TransactionPage({
             <span>{form.attachment ? `${form.attachment} · พบ ${receiveDrafts.length} รายการ` : 'ระบบจะกรอกสินค้า Lot วันผลิต และวันหมดอายุให้อัตโนมัติ'}</span>
           </div>}
           <div className="form-grid">
-            {page === 'ยืม / คืน' && <Field label="ประเภทรายการ"><select value={form.movementType} onChange={(e) => setForm({ ...form, movementType: e.target.value })}><option>ยืม</option><option>คืน</option><option>ซื้อจากสาขา</option><option>ขายให้สาขา</option></select></Field>}
+            {page === 'โอนย้าย / ยืมคืน' && <Field label="ประเภทรายการ"><select value={form.movementType} onChange={(e) => setForm({ ...form, movementType: e.target.value })}><option>โอนย้าย</option><option>ยืม</option><option>คืน</option><option>ซื้อจากสาขา</option><option>ขายให้สาขา</option></select></Field>}
             <Field label="วันที่">
               <ThaiDateInput value={form.date} onChange={(date) => setForm({ ...form, date })} />
             </Field>
             <Field
               label={
-                page === 'ยืม / คืน'
-                  ? 'สาขาให้ยืม'
-                  : page === 'โอนย้ายสาขา'
-                    ? 'จากสาขา'
-                    : 'สาขา'
+                page === 'โอนย้าย / ยืมคืน' ? 'สาขาต้นทาง' : 'สาขา'
               }
             >
               <select
@@ -306,7 +312,7 @@ function TransactionPage({
               />
             </Field>
             <Field label={cfg.party}>
-              {page === 'ยืม / คืน' || page === 'โอนย้ายสาขา' ? (
+              {page === 'โอนย้าย / ยืมคืน' ? (
                 <select
                   value={form.party}
                   onChange={(e) => setForm({ ...form, party: e.target.value })}
@@ -423,7 +429,7 @@ function RecordTable({
                   >
                     {r.status}
                   </span>
-                  {(page === 'โอนย้ายสาขา' || page === 'ยืม / คืน') &&
+                  {page === 'โอนย้าย / ยืมคืน' &&
                     r.status.includes('รอ') && (
                       <button
                         className="confirm-mini"
@@ -434,9 +440,7 @@ function RecordTable({
                                 ? {
                                     ...x,
                                     status:
-                                      page === 'โอนย้ายสาขา'
-                                        ? 'รับแล้ว'
-                                        : 'คืนครบแล้ว',
+                                      r.type === 'โอนย้าย' ? 'รับแล้ว' : 'คืนครบแล้ว',
                                   }
                                 : x,
                             ),
@@ -935,7 +939,6 @@ function Reports({
   const outgoing = records
     .filter((r) => ['เบิกออก', 'โอนย้าย', 'ยืม'].includes(r.type))
     .reduce((n, r) => n + r.qty, 0);
-  const categories = [...new Set(products.map((p) => p.category))];
   const stockAt = (snapshot: StockSnapshot | undefined, product: Product) => snapshot?.items.find((item) => item.code === product.code || normalizeName(item.name) === normalizeName(product.name))?.stock;
   const accountingRow = (product: Product) => {
     const opening = stockAt(openingSnapshot, product) ?? 0, closing = stockAt(closingSnapshot, product) ?? product.stock;
@@ -948,13 +951,34 @@ function Reports({
     const adjustment = closing - (opening - used - transferred - borrowed + received + returned);
     return { product, opening, used, transferred: transferred + borrowed, received, adjustment: adjustment + returned, closing };
   };
-  const accountingRows = products.map(accountingRow);
+  const findTemplateProduct = (category: string, label: string) => {
+    const aliases: Record<string, string> = { Kysses: 'Kysse' };
+    const searchLabel = aliases[label] || label;
+    const exact = products.find((product) => normalizeName(product.name) === normalizeName(searchLabel));
+    if (exact) return exact;
+    const branded = normalizeName(`${category} ${searchLabel}`);
+    const brandMatch = products.find((product) => {
+      const candidate = normalizeName(product.name);
+      return candidate.includes(branded) || branded.includes(candidate);
+    });
+    if (brandMatch) return brandMatch;
+    const withoutUnit = normalizeName(searchLabel.replace(/\((?:ขวด|กล่อง|amp\.?|vial|unit|s\.u\.|ml\.?)\)/gi, ''));
+    return products.find((product) => {
+      const candidate = normalizeName(product.name);
+      return withoutUnit.length > 2 && (candidate.includes(withoutUnit) || withoutUnit.includes(candidate));
+    });
+  };
+  const accountingRows = accountingTemplate.flatMap(([category, names], sectionIndex) => names.split('|').map((displayName, itemIndex) => {
+    const matched = findTemplateProduct(category, displayName);
+    const product: Product = matched || { id: `template-${sectionIndex}-${itemIndex}`, code: '', name: displayName, category, unit: guessUnit(displayName), minimum: 0, active: true, stock: 0 };
+    return { ...accountingRow(product), category, displayName, sectionIndex, itemIndex };
+  }));
   const exportMonthly = () => {
     const sheetRows: (string | number)[][] = [['ลำดับ','สินค้า','ยอดคงคลังเดิม','จำนวนที่ใช้/ขายไป','จำนวนที่โอนย้าย','ยอดรับเข้า','ปรับยอด/คืน','ยอดคงคลังสิ้นเดือน','Exp.','หมายเหตุ']];
-    for (const category of categories) {
+    accountingTemplate.forEach(([category], sectionIndex) => {
       sheetRows.push([category,'','','','','','','','','']);
-      accountingRows.filter((row) => row.product.category === category).forEach((row, index) => sheetRows.push([index + 1,row.product.name,row.opening,row.used || 0,row.transferred || 0,row.received || 0,row.adjustment || 0,row.closing,row.product.expiry || '',row.product.note || '']));
-    }
+      accountingRows.filter((row) => row.sectionIndex === sectionIndex).forEach((row, index) => sheetRows.push([index + 1,row.displayName,row.opening,row.used || 0,row.transferred || 0,row.received || 0,row.adjustment || 0,row.closing,row.product.expiry || '',row.product.note || '']));
+    });
     const sheet = XLSX.utils.aoa_to_sheet(sheetRows); sheet['!cols'] = [{wch:8},{wch:42},{wch:15},{wch:18},{wch:16},{wch:13},{wch:15},{wch:19},{wch:24},{wch:28}];
     const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'รายงานสต็อคคงคลัง'); XLSX.writeFile(workbook, `รายงานสต็อคคงคลัง_${closingSnapshot?.date || today()}.xlsx`);
   };
@@ -1010,14 +1034,11 @@ function Reports({
             </tr>
           </thead>
           <tbody>
-            {categories.flatMap((category) => {
-              const list = products.filter((p) => p.category === category);
+            {accountingTemplate.flatMap(([category], sectionIndex) => {
+              const list = accountingRows.filter((row) => row.sectionIndex === sectionIndex);
               return [
-                <tr className="category-row" key={`cat-${category}`}><td colSpan={10}>{category}</td></tr>,
-                ...list.map((p, index) => {
-                  const row = accountingRow(p);
-                  return <tr key={p.id}><td>{index + 1}</td><td><strong>{p.name}</strong><small>{p.unit}</small></td><td>{formatQty(row.opening)}</td><td>{row.used ? formatQty(row.used) : '-'}</td><td>{row.transferred ? formatQty(row.transferred) : '-'}</td><td>{row.received ? formatQty(row.received) : '-'}</td><td>{row.adjustment ? formatQty(row.adjustment) : '-'}</td><td><b>{formatQty(row.closing)}</b> {p.unit}</td><td>{p.expiry || '-'}</td><td>{p.note || '-'}</td></tr>;
-                }),
+                <tr className="category-row" key={`cat-${sectionIndex}-${category}`}><td colSpan={10}>{category}</td></tr>,
+                ...list.map((row, index) => <tr key={`${row.sectionIndex}-${row.itemIndex}`}><td>{index + 1}</td><td><strong>{row.displayName}</strong><small>{row.product.unit}</small></td><td>{formatQty(row.opening)}</td><td>{row.used ? formatQty(row.used) : '-'}</td><td>{row.transferred ? formatQty(row.transferred) : '-'}</td><td>{row.received ? formatQty(row.received) : '-'}</td><td>{row.adjustment ? formatQty(row.adjustment) : '-'}</td><td><b>{formatQty(row.closing)}</b> {row.product.unit}</td><td>{row.product.expiry || '-'}</td><td>{row.product.note || '-'}</td></tr>),
               ];
             })}
           </tbody>
@@ -1076,7 +1097,7 @@ function Preferences({ notify }: { notify: (s: string) => void }) {
         </div>
         <div className="panel setting-card">
           <h3>ข้อมูลผู้ใช้งาน</h3>
-          <p>พิชญาภรณ์ · ผู้ดูแลระบบ</p>
+          <p>ครีม · พิชญาพร · ผู้ดูแลระบบ</p>
           <button onClick={() => notify('บันทึกการตั้งค่าแล้ว')}>
             <Save size={14} /> บันทึกการตั้งค่า
           </button>

@@ -88,8 +88,7 @@ const menu = [
   ['Dashboard', LayoutDashboard],
   ['Stock รายวัน', PackageCheck],
   ['รับเข้า', ClipboardPlus],
-  ['โอนย้ายสาขา', ArrowLeftRight],
-  ['ยืม / คืน', HandCoins],
+  ['โอนย้าย / ยืมคืน', ArrowLeftRight],
   ['เบิกออก', PackageMinus],
   ['ตรวจนับ Stock', ScanLine],
   ['Stock คงคลัง', Boxes],
@@ -365,7 +364,7 @@ function Sidebar({
       <div className="sidebar-foot">
         <div className="avatar">พ</div>
         <div>
-          <strong>พิชญาภรณ์</strong>
+          <strong>ครีม · พิชญาพร</strong>
           <span>ผู้ดูแลระบบ</span>
         </div>
         <ChevronDown size={16} />
@@ -466,7 +465,7 @@ function Dashboard({
           value={String(pendingLoans.length)}
           unit="รายการ"
           note={pendingLoans.length ? 'กดเพื่อตรวจสอบรายการค้างคืน' : 'ไม่มีรายการยืมค้าง'}
-          click={() => navigate('ยืม / คืน')}
+          click={() => navigate('โอนย้าย / ยืมคืน')}
         />
       </div>
       <div className="dashboard-grid">
@@ -490,7 +489,7 @@ function Dashboard({
             title="รายการยืมค้าง"
             sub={pendingLoans.length ? `${pendingLoans[0].product} ยังรอคืน` : 'ไม่มีรายการยืมค้าง'}
             count={String(pendingLoans.length)}
-            click={() => navigate('ยืม / คืน')}
+            click={() => navigate('โอนย้าย / ยืมคืน')}
           />
           <Attention
             icon={<ScanLine />}
@@ -651,7 +650,7 @@ function PrintPreview({ cases, close }: { cases: Case[]; close: () => void }) {
             ))}
           </div>
           <footer className="print-signatures">
-            <div><span>ผู้ทำรายการ</span><i /><strong>พิชญาภรณ์</strong><small>วันที่ ____ / ____ / ______</small></div>
+            <div><span>ผู้ทำรายการ</span><i /><strong>พิชญาพร</strong><small>วันที่ ____ / ____ / ______</small></div>
             <div><span>ผู้ตรวจสอบ</span><i /><strong>________________________</strong><small>วันที่ ____ / ____ / ______</small></div>
           </footer>
           <div className="print-footer"><span>MICHIKO Stock Management</span><span>พิมพ์เมื่อ {new Intl.DateTimeFormat('th-TH',{dateStyle:'medium',timeStyle:'short'}).format(new Date())}</span></div>
