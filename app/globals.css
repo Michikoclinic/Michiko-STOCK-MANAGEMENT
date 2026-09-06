@@ -285,6 +285,7 @@ body {
   position: relative;
   min-height: 112px;
 }
+.metric.clickable{cursor:pointer;transition:transform .16s ease,box-shadow .16s ease}.metric.clickable:hover{transform:translateY(-2px);box-shadow:0 9px 24px #6d454b13}.metric.clickable:focus-visible{outline:2px solid #8b535b;outline-offset:2px}.dashboard-empty{padding:28px 18px;text-align:center;color:#9a8385;font-size:12px}
 .metric-icon {
   position: absolute;
   right: 13px;

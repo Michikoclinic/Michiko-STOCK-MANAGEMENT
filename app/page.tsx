@@ -68,6 +68,8 @@ type Preview = {
   needsReview: number;
   duplicate: boolean;
 };
+type DashboardProduct = { id: string; name: string; unit: string; stock: number; minimum: number };
+type DashboardRecord = { id: string; date: string; product: string; qty: number; unit: string; type: string; status: string };
 type ToolRegistry = {
   registerTool: (
     tool: {
@@ -106,6 +108,8 @@ export default function Home() {
   const [importHashes, setImportHashes] = useSharedStored<string[]>('michiko-stock-imports', []);
   const [assistants] = useSharedStored<string[]>('michiko-assistants', []);
   const [doctors] = useSharedStored<string[]>('michiko-doctors', []);
+  const [dashboardProducts] = useSharedStored<DashboardProduct[]>('michiko-products', []);
+  const [dashboardRecords] = useSharedStored<DashboardRecord[]>('michiko-operations', []);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [toast, setToast] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -252,6 +256,9 @@ export default function Home() {
               cases={cases}
               openImport={() => fileRef.current?.click()}
               goDaily={() => setPage('Stock รายวัน')}
+              products={dashboardProducts}
+              records={dashboardRecords}
+              navigate={setPage}
             />
           ) : page === 'Stock รายวัน' ? (
             <Daily
@@ -376,12 +383,23 @@ function Dashboard({
   cases,
   openImport,
   goDaily,
+  products,
+  records,
+  navigate,
 }: {
   cases: Case[];
   openImport: () => void;
   goDaily: () => void;
+  products: DashboardProduct[];
+  records: DashboardRecord[];
+  navigate: (page: string) => void;
 }) {
-  const items = cases.reduce((n, c) => n + c.items.length, 0);
+  const currentDate = new Date().toISOString().slice(0, 10);
+  const todayCases = cases.filter((c) => c.date === currentDate);
+  const items = todayCases.reduce((n, c) => n + c.items.length, 0);
+  const lowProducts = products.filter((product) => product.minimum > 0 && product.stock <= product.minimum);
+  const pendingLoans = records.filter((record) => record.type === 'ยืม' && record.status.includes('รอ'));
+  const reviews = cases.filter((c) => c.needsReview);
   return (
     <>
       <div className="page-head">
@@ -394,7 +412,7 @@ function Dashboard({
         </div>
         <div className="filters">
           <button>
-            <CalendarDays size={17} /> กันยายน 2026 <ChevronDown size={14} />
+            <CalendarDays size={17} /> {formatDate(currentDate)} <ChevronDown size={14} />
           </button>
           <button className="primary" onClick={openImport}>
             <Upload size={17} /> นำเข้ารายงาน
@@ -408,64 +426,66 @@ function Dashboard({
           value={String(items)}
           unit="รายการ"
           note="อัปเดตจากข้อมูลล่าสุด"
+          click={() => navigate('Stock รายวัน')}
         />
         <Metric
           icon={<ClipboardPlus />}
           title="จำนวนเคสวันนี้"
-          value={String(cases.length)}
+          value={String(todayCases.length)}
           unit="เคส"
           note="พร้อมตรวจสอบรายละเอียด"
+          click={() => navigate('Stock รายวัน')}
         />
         <Metric
           icon={<CircleAlert />}
           title="Stock ต่ำ"
-          value="6"
+          value={String(lowProducts.length)}
           unit="รายการ"
-          note="ควรตรวจสอบ 2 รายการ"
+          note={lowProducts.length ? 'กดเพื่อดูรายการที่ต้องเติม' : 'ไม่มีรายการต่ำกว่า Minimum'}
+          click={() => navigate('Stock คงคลัง')}
         />
         <Metric
           icon={<HandCoins />}
           title="ยืมค้าง"
-          value="3"
+          value={String(pendingLoans.length)}
           unit="รายการ"
-          note="เกินกำหนด 1 รายการ"
+          note={pendingLoans.length ? 'กดเพื่อตรวจสอบรายการค้างคืน' : 'ไม่มีรายการยืมค้าง'}
+          click={() => navigate('ยืม / คืน')}
         />
       </div>
       <div className="dashboard-grid">
         <article className="panel daily">
           <PanelHead
             title="Stock รายวันล่าสุด"
-            sub={`${cases.length} เคส`}
+            sub={`${todayCases.length} เคส`}
             action="ดูทั้งหมด"
             click={goDaily}
           />
-          {cases.slice(0, 3).map((c) => (
+          {todayCases.slice(0, 3).map((c) => (
             <CaseRow key={c.id} data={c} />
           ))}
+          {!todayCases.length && <div className="dashboard-empty">ยังไม่มีรายการ Stock รายวันของวันนี้</div>}
         </article>
         <article className="panel pending">
           <PanelHead title="รายการที่ต้องดูแล" sub="อัปเดตล่าสุดเมื่อสักครู่" />
-          <Attention
-            icon={<CircleAlert />}
-            title="Stock ต่ำกว่า Minimum"
-            sub="Restylane Kysse เหลือ 2 cc"
-            count="ดู"
-          />
+          <Attention icon={<CircleAlert />} title="Stock ต่ำกว่า Minimum" sub={lowProducts.length ? `${lowProducts[0].name} เหลือ ${lowProducts[0].stock} ${lowProducts[0].unit}` : 'ไม่มีรายการที่ต้องเติม'} count={String(lowProducts.length)} click={() => navigate('Stock คงคลัง')} />
           <Attention
             icon={<HandCoins />}
             title="รายการยืมค้าง"
-            sub="Emsphere ยืมจากพหลโยธิน"
-            count="3"
+            sub={pendingLoans.length ? `${pendingLoans[0].product} ยังรอคืน` : 'ไม่มีรายการยืมค้าง'}
+            count={String(pendingLoans.length)}
+            click={() => navigate('ยืม / คืน')}
           />
           <Attention
             icon={<ScanLine />}
             title="รอตรวจสอบ"
-            sub={`${cases.filter((c) => c.needsReview).length} เคสต้องจัดกลุ่ม`}
-            count={String(cases.filter((c) => c.needsReview).length)}
+            sub={`${reviews.length} เคสต้องจัดกลุ่ม`}
+            count={String(reviews.length)}
+            click={() => navigate('Stock รายวัน')}
           />
         </article>
       </div>
-      <Usage />
+      <Usage cases={cases} records={records} products={products} openReport={() => navigate('รายงาน')} />
     </>
   );
 }
@@ -1013,15 +1033,17 @@ function Metric({
   value,
   unit,
   note,
+  click,
 }: {
   icon: React.ReactNode;
   title: string;
   value: string;
   unit: string;
   note: string;
+  click?: () => void;
 }) {
   return (
-    <article className="metric">
+    <article className={`metric ${click ? 'clickable' : ''}`} onClick={click} role={click ? 'button' : undefined} tabIndex={click ? 0 : undefined} onKeyDown={(e) => { if (click && (e.key === 'Enter' || e.key === ' ')) click(); }}>
       <div className="metric-icon">{icon}</div>
       <span>{title}</span>
       <strong>
@@ -1091,11 +1113,13 @@ function Attention({
   title,
   sub,
   count,
+  click,
 }: {
   icon: React.ReactNode;
   title: string;
   sub: string;
   count: string;
+  click?: () => void;
 }) {
   return (
     <div className="attention">
@@ -1104,50 +1128,54 @@ function Attention({
         <strong>{title}</strong>
         <span>{sub}</span>
       </div>
-      <button>{count}</button>
+      <button onClick={click}>{count}</button>
     </div>
   );
 }
-function Usage() {
+function Usage({ cases, records, products, openReport }: { cases: Case[]; records: DashboardRecord[]; products: DashboardProduct[]; openReport: () => void }) {
+  const month = new Date().toISOString().slice(0, 7);
+  const totals = new Map<string, number>();
+  cases.filter((entry) => entry.date.startsWith(month)).forEach((entry) => entry.items.forEach((item) => totals.set(item.name, (totals.get(item.name) || 0) + item.qty)));
+  records.filter((entry) => entry.date.startsWith(month) && entry.type === 'เบิกออก').forEach((entry) => totals.set(entry.product, (totals.get(entry.product) || 0) + entry.qty));
+  const ranking = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const total = [...totals.values()].reduce((sum, value) => sum + value, 0);
+  const max = ranking[0]?.[1] || 1;
   return (
     <article className="panel usage">
       <PanelHead
         title="สรุปการใช้ Stock เดือนนี้"
-        sub="1–6 กันยายน 2026"
+        sub={new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(new Date())}
         action="ดูรายงาน"
+        click={openReport}
       />
       <div className="usage-body">
         <div className="bars">
-          {[
-            ['Restylane Kysse', 76, '14 cc'],
-            ['Bienox', 59, '8 ขวด'],
-            ['Syringe 1 ml', 45, '26 อัน'],
-            ['Cannula 22G', 34, '18 อัน'],
-          ].map(([n, w, v]) => (
+          {ranking.map(([n, quantity]) => (
             <div className="bar-row" key={n}>
               <span>{n}</span>
               <div>
-                <i style={{ width: `${w}%` }} />
+                <i style={{ width: `${Math.max(5, quantity / max * 100)}%` }} />
               </div>
-              <strong>{v}</strong>
+              <strong>{quantity} {products.find((product) => product.name === n)?.unit || ''}</strong>
             </div>
           ))}
+          {!ranking.length && <div className="dashboard-empty">ยังไม่มีรายการใช้หรือเบิก Stock ในเดือนนี้</div>}
         </div>
         <div className="donut">
           <div>
-            <strong>168</strong>
+            <strong>{total}</strong>
             <span>รายการที่ใช้</span>
           </div>
         </div>
         <div className="legend">
           <p>
-            <i /> Stock รายวัน <b>142</b>
+            <i /> Stock รายวัน <b>{cases.filter((entry) => entry.date.startsWith(month)).reduce((sum, entry) => sum + entry.items.reduce((n, item) => n + item.qty, 0), 0)}</b>
           </p>
           <p>
-            <i className="l2" /> เบิกทั่วไป <b>18</b>
+            <i className="l2" /> เบิกทั่วไป <b>{records.filter((entry) => entry.date.startsWith(month) && entry.type === 'เบิกออก').reduce((sum, entry) => sum + entry.qty, 0)}</b>
           </p>
           <p>
-            <i className="l3" /> ของเสีย <b>8</b>
+            <i className="l3" /> รวม <b>{total}</b>
           </p>
         </div>
       </div>
