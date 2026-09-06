@@ -1,0 +1,1204 @@
+'use client';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
+import {
+  ArrowLeftRight,
+  Boxes,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardPlus,
+  FileDown,
+  FileUp,
+  HandCoins,
+  History,
+  PackageMinus,
+  Plus,
+  Printer,
+  Save,
+  Search,
+  Settings,
+  Tags,
+} from 'lucide-react';
+
+type RecordRow = {
+  id: string;
+  date: string;
+  branch: string;
+  product: string;
+  qty: number;
+  unit: string;
+  party: string;
+  note: string;
+  status: string;
+  type: string;
+  lot?: string;
+  exp?: string;
+};
+type Product = {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  unit: string;
+  minimum: number;
+  active: boolean;
+  stock: number;
+  expiry?: string;
+  note?: string;
+};
+type StockSnapshotItem = { code: string; name: string; category: string; unit: string; stock: number };
+type StockSnapshot = { id: string; date: string; fileName: string; items: StockSnapshotItem[] };
+const today = () => new Date().toISOString().slice(0, 10);
+const id = () => crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+const branches = [
+  'MICHIKO สาขา Emsphere',
+  'MICHIKO สาขาพหลโยธิน',
+];
+const initialProducts: Product[] = [
+  {
+    id: 'p1',
+    code: 'FL-001',
+    name: 'Restylane Kysse',
+    category: 'Filler',
+    unit: 'cc',
+    minimum: 10,
+    active: true,
+    stock: 3,
+    expiry: '2026-10-31 (3 cc)',
+    note: 'มีของการตลาด 1 cc',
+  },
+  {
+    id: 'p2',
+    code: 'BT-001',
+    name: 'Bienox',
+    category: 'Botox',
+    unit: 'ขวด',
+    minimum: 5,
+    active: true,
+    stock: 2,
+    expiry: '2026-09-04 (850 Unit)',
+  },
+  {
+    id: 'p3',
+    code: 'EQ-022',
+    name: 'Cannula 22G',
+    category: 'อุปกรณ์',
+    unit: 'อัน',
+    minimum: 20,
+    active: true,
+    stock: 5,
+    expiry: '2028-03-18 (40 อัน)',
+  },
+  {
+    id: 'p4',
+    code: 'EQ-001',
+    name: 'Syringe 1 ml',
+    category: 'อุปกรณ์',
+    unit: 'อัน',
+    minimum: 20,
+    active: true,
+    stock: 8,
+    expiry: '2026-09-24',
+  },
+];
+function useStored<T>(key: string, initial: T) {
+  const [value, setValue] = useState<T>(initial);
+  useEffect(() => {
+    const raw = localStorage.getItem(key);
+    if (raw)
+      try {
+        setValue(JSON.parse(raw));
+      } catch {}
+  }, [key]);
+  useEffect(
+    () => localStorage.setItem(key, JSON.stringify(value)),
+    [key, value],
+  );
+  return [value, setValue] as const;
+}
+
+export function OperationalPage({
+  page,
+  notify,
+}: {
+  page: string;
+  notify: (s: string) => void;
+}) {
+  const [records, setRecords] = useStored<RecordRow[]>(
+    'michiko-operations',
+    [],
+  );
+  const [products, setProducts] = useStored<Product[]>(
+    'michiko-products',
+    initialProducts,
+  );
+  if (page === 'Stock คงคลัง')
+    return (
+      <Inventory
+        products={products}
+        setProducts={setProducts}
+        notify={notify}
+      />
+    );
+  if (page === 'ทะเบียนสินค้า')
+    return (
+      <Products products={products} setProducts={setProducts} notify={notify} />
+    );
+  if (page === 'รายงาน')
+    return <Reports records={records} products={products} notify={notify} />;
+  if (page === 'ประวัติการเคลื่อนไหว') return <Movements records={records} />;
+  if (page === 'ตั้งค่า') return <Preferences notify={notify} />;
+  return (
+    <TransactionPage
+      page={page}
+      records={records}
+      setRecords={setRecords}
+      products={products}
+      notify={notify}
+    />
+  );
+}
+
+const configs: Record<
+  string,
+  {
+    icon: typeof Boxes;
+    title: string;
+    sub: string;
+    type: string;
+    party: string;
+    status: string;
+  }
+> = {
+  รับเข้า: {
+    icon: ClipboardPlus,
+    title: 'รับ Stock เข้า',
+    sub: 'บันทึกสินค้า Lot และวันหมดอายุ พร้อมสร้างเลขเอกสารอัตโนมัติ',
+    type: 'รับเข้า',
+    party: 'Supplier / ที่มา',
+    status: 'รับเข้าแล้ว',
+  },
+  โอนย้ายสาขา: {
+    icon: ArrowLeftRight,
+    title: 'โอนย้ายสาขา',
+    sub: 'ย้าย Stock แบบถาวรและรอให้สาขาปลายทางยืนยันรับ',
+    type: 'โอนย้าย',
+    party: 'ไปสาขา',
+    status: 'รอรับ',
+  },
+  'ยืม / คืน': {
+    icon: HandCoins,
+    title: 'ยืม / คืนระหว่างสาขา',
+    sub: 'ติดตามจำนวนยืม คืนแล้ว และยอดค้างคืน',
+    type: 'ยืม',
+    party: 'สาขาที่ยืม',
+    status: 'รอคืน',
+  },
+  เบิกออก: {
+    icon: PackageMinus,
+    title: 'เบิก Stock ออก',
+    sub: 'สำหรับใช้ภายใน Tester ของเสีย หมดอายุ และการเบิกทั่วไป',
+    type: 'เบิกออก',
+    party: 'ประเภทการเบิก',
+    status: 'บันทึกแล้ว',
+  },
+  'ตรวจนับ Stock': {
+    icon: ClipboardCheck,
+    title: 'ตรวจนับ Stock',
+    sub: 'เปรียบเทียบยอดตามระบบกับยอดนับจริงและบันทึกสาเหตุส่วนต่าง',
+    type: 'ตรวจนับ',
+    party: 'สาเหตุส่วนต่าง',
+    status: 'ตรวจแล้ว',
+  },
+};
+function TransactionPage({
+  page,
+  records,
+  setRecords,
+  products,
+  notify,
+}: {
+  page: string;
+  records: RecordRow[];
+  setRecords: (v: RecordRow[] | ((p: RecordRow[]) => RecordRow[])) => void;
+  products: Product[];
+  notify: (s: string) => void;
+}) {
+  const cfg = configs[page] || configs['รับเข้า'];
+  const Icon = cfg.icon;
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    date: today(),
+    branch: 'MICHIKO สาขา Emsphere',
+    product: products[0]?.name || '',
+    qty: 1,
+    unit: products[0]?.unit || 'อัน',
+    party:
+      page === 'ยืม / คืน' || page === 'โอนย้ายสาขา'
+        ? 'MICHIKO สาขาพหลโยธิน'
+        : '',
+    note: '',
+    lot: '',
+    exp: '',
+  });
+  const rows = records.filter((r) => r.type === cfg.type);
+  const save = () => {
+    if (!form.product || form.qty <= 0) return;
+    if (
+      (page === 'ยืม / คืน' || page === 'โอนย้ายสาขา') &&
+      form.branch === form.party
+    ) {
+      notify('กรุณาเลือกสาขาต้นทางและปลายทางให้ต่างกัน');
+      return;
+    }
+    setRecords((p) => [
+      { id: id(), ...form, type: cfg.type, status: cfg.status },
+      ...p,
+    ]);
+    setOpen(false);
+    notify(`บันทึก${cfg.title}เรียบร้อยแล้ว`);
+  };
+  return (
+    <>
+      <PageHead
+        icon={<Icon />}
+        title={cfg.title}
+        sub={cfg.sub}
+        action={() => setOpen(!open)}
+        actionText={open ? 'ปิดแบบฟอร์ม' : '+ ทำรายการใหม่'}
+      />
+      {open && (
+        <section className="ops-form panel">
+          <div className="form-grid">
+            <Field label="วันที่">
+              <input
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+              />
+            </Field>
+            <Field
+              label={
+                page === 'ยืม / คืน'
+                  ? 'สาขาให้ยืม'
+                  : page === 'โอนย้ายสาขา'
+                    ? 'จากสาขา'
+                    : 'สาขา'
+              }
+            >
+              <select
+                value={form.branch}
+                onChange={(e) => setForm({ ...form, branch: e.target.value })}
+              >
+                {branches.map((branch) => (
+                  <option key={branch}>{branch}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="รายการสินค้า">
+              <select
+                value={form.product}
+                onChange={(e) => {
+                  const p = products.find((x) => x.name === e.target.value);
+                  setForm({
+                    ...form,
+                    product: e.target.value,
+                    unit: p?.unit || form.unit,
+                  });
+                }}
+              >
+                {products.map((p) => (
+                  <option key={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="จำนวน">
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.qty}
+                onChange={(e) =>
+                  setForm({ ...form, qty: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Field label="หน่วย">
+              <input
+                value={form.unit}
+                onChange={(e) => setForm({ ...form, unit: e.target.value })}
+              />
+            </Field>
+            <Field label={cfg.party}>
+              {page === 'ยืม / คืน' || page === 'โอนย้ายสาขา' ? (
+                <select
+                  value={form.party}
+                  onChange={(e) => setForm({ ...form, party: e.target.value })}
+                >
+                  {branches.map((branch) => (
+                    <option key={branch}>{branch}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={form.party}
+                  onChange={(e) => setForm({ ...form, party: e.target.value })}
+                  placeholder={cfg.party}
+                />
+              )}
+            </Field>
+            {page === 'รับเข้า' && (
+              <>
+                <Field label="Lot No.">
+                  <input
+                    value={form.lot}
+                    onChange={(e) => setForm({ ...form, lot: e.target.value })}
+                  />
+                </Field>
+                <Field label="วันหมดอายุ">
+                  <input
+                    type="date"
+                    value={form.exp}
+                    onChange={(e) => setForm({ ...form, exp: e.target.value })}
+                  />
+                </Field>
+              </>
+            )}
+            <Field label="หมายเหตุ">
+              <input
+                value={form.note}
+                onChange={(e) => setForm({ ...form, note: e.target.value })}
+              />
+            </Field>
+          </div>
+          <div className="form-actions">
+            <button onClick={() => setOpen(false)}>ยกเลิก</button>
+            <button className="primary" onClick={save}>
+              <Save size={15} />
+              บันทึกรายการ
+            </button>
+          </div>
+        </section>
+      )}
+      <RecordTable rows={rows} page={page} setRecords={setRecords} />
+    </>
+  );
+}
+function RecordTable({
+  rows,
+  page,
+  setRecords,
+}: {
+  rows: RecordRow[];
+  page: string;
+  setRecords: (v: RecordRow[] | ((p: RecordRow[]) => RecordRow[])) => void;
+}) {
+  return (
+    <section className="ops-table panel">
+      <div className="ops-toolbar">
+        <label>
+          <Search size={16} />
+          <input placeholder="ค้นหารายการ..." />
+        </label>
+        <button onClick={printOperationalReport}>
+          <Printer size={15} /> พิมพ์
+        </button>
+        <button>
+          <FileDown size={15} /> Export Excel
+        </button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>วันที่</th>
+            <th>เลขที่เอกสาร</th>
+            <th>สินค้า</th>
+            <th>จำนวน</th>
+            <th>รายละเอียด</th>
+            <th>สถานะ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? (
+            rows.map((r, i) => (
+              <tr key={r.id}>
+                <td>{r.date}</td>
+                <td>{docNo(r.type, i)}</td>
+                <td>
+                  <strong>{r.product}</strong>
+                  <small>{r.branch}</small>
+                </td>
+                <td>
+                  {r.qty} {r.unit}
+                </td>
+                <td>
+                  {r.party || '-'}
+                  <small>{r.note}</small>
+                </td>
+                <td>
+                  <span
+                    className={`status ${r.status.includes('รอ') ? 'pending-status' : ''}`}
+                  >
+                    {r.status}
+                  </span>
+                  {(page === 'โอนย้ายสาขา' || page === 'ยืม / คืน') &&
+                    r.status.includes('รอ') && (
+                      <button
+                        className="confirm-mini"
+                        onClick={() =>
+                          setRecords((all) =>
+                            all.map((x) =>
+                              x.id === r.id
+                                ? {
+                                    ...x,
+                                    status:
+                                      page === 'โอนย้ายสาขา'
+                                        ? 'รับแล้ว'
+                                        : 'คืนครบแล้ว',
+                                  }
+                                : x,
+                            ),
+                          )
+                        }
+                      >
+                        <CheckCircle2 size={13} /> ยืนยัน
+                      </button>
+                    )}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={6}>
+                <Empty text="ยังไม่มีรายการในเมนูนี้" />
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+function Inventory({
+  products,
+  setProducts,
+  notify,
+}: {
+  products: Product[];
+  setProducts: (v: Product[] | ((p: Product[]) => Product[])) => void;
+  notify: (s: string) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const inventoryFile = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState({
+    branch: branches[0],
+    productId: products[0]?.id || '',
+    stock: products[0]?.stock || 0,
+    lot: '',
+    expiry: '',
+    note: '',
+  });
+  const list = products.filter((p) =>
+    p.name.toLowerCase().includes(q.toLowerCase()),
+  );
+  const selected = products.find((p) => p.id === form.productId);
+  const importInventory = async (file: File) => {
+    try {
+      let fileData: ArrayBuffer | Uint8Array = await file.arrayBuffer();
+      if (file.name.toLowerCase().endsWith('.zip')) {
+        const zip = await JSZip.loadAsync(fileData);
+        const entry = Object.values(zip.files).find(
+          (item) => !item.dir && /\.(csv|xlsx|xls)$/i.test(item.name),
+        );
+        if (!entry) throw new Error('no spreadsheet in zip');
+        fileData = await entry.async('uint8array');
+      }
+      const workbook = XLSX.read(fileData, {
+        type: 'array',
+        cellDates: true,
+      });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+        header: 1,
+        defval: '',
+        raw: true,
+      });
+      const locationHeader = rows.findIndex((row) =>
+        row.some((cell) => String(cell).trim() === 'ชื่อยา'),
+      );
+      if (locationHeader >= 0) {
+        const headers = rows[locationHeader].map((cell) => String(cell).replace(/^\uFEFF/, '').trim());
+        const column = (name: string) => headers.findIndex((header) => header.includes(name));
+        const nameCol = column('ชื่อยา');
+        const codeCol = column('รหัสยา');
+        const categoryCol = column('หมวดหมู่');
+        const unitCol = column('หน่วย');
+        const minimumCol = column('ยอดสต็อกขั้นต่ำ');
+        const lotCol = column('เลขล็อตผู้ผลิต');
+        const expiryCol = column('วันหมดอายุ');
+        const stockCol = column('ยอดคงคลัง ณ วันที่เลือก');
+        const grouped = new Map<string, Product>();
+        for (const row of rows.slice(locationHeader + 1)) {
+          const name = String(row[nameCol] || '').trim();
+          if (!name) continue;
+          const key = String(row[codeCol] || name).trim();
+          const quantity = Number(row[stockCol]) || 0;
+          const expiry = formatExcelValue(row[expiryCol]);
+          const lot = String(row[lotCol] || '').trim();
+          const current = grouped.get(key);
+          if (current) {
+            current.stock += quantity;
+            if (expiry && !current.expiry?.includes(expiry))
+              current.expiry = [current.expiry, expiry].filter(Boolean).join(', ');
+            if (lot && !current.note?.includes(lot))
+              current.note = [current.note, `Lot ${lot}`].filter(Boolean).join(', ');
+          } else {
+            const existing = products.find((p) => p.code === key || normalizeName(p.name) === normalizeName(name));
+            grouped.set(key, {
+              id: existing?.id || id(),
+              code: key,
+              name,
+              category: String(row[categoryCol] || existing?.category || 'อื่น ๆ'),
+              unit: String(row[unitCol] || existing?.unit || 'อัน'),
+              minimum: Number(row[minimumCol]) || existing?.minimum || 0,
+              active: true,
+              stock: quantity,
+              expiry: expiry || existing?.expiry,
+              note: lot ? `Lot ${lot}` : existing?.note,
+            });
+          }
+        }
+        const imported = [...grouped.values()];
+        if (!imported.length) throw new Error('no inventory rows');
+        if (!window.confirm(`พบสินค้า ${imported.length} รายการจากไฟล์ระบบ\nต้องการใช้เป็นยอดคงคลังปัจจุบันหรือไม่?`)) return;
+        setProducts((current) => {
+          const ids = new Set(imported.map((p) => p.id));
+          return [...imported, ...current.filter((p) => !ids.has(p.id))];
+        });
+        notify(`นำเข้ายอดคงคลังจากไฟล์ระบบจำนวน ${imported.length} รายการแล้ว`);
+        return;
+      }
+      let category = 'อื่น ๆ';
+      const imported: Product[] = [];
+      for (const row of rows) {
+        const order = row[0];
+        const name = String(row[1] || '').trim();
+        if (!name) continue;
+        const opening = typeof row[2] === 'number' ? row[2] : undefined;
+        const closing = typeof row[7] === 'number' ? row[7] : undefined;
+        if (typeof order !== 'number' && opening === undefined && closing === undefined) {
+          if (!/ยอด|clinic/i.test(name)) category = name.replace(/ยอด|คงคลัง|สิ้นเดือน/g, '').trim() || category;
+          continue;
+        }
+        if (opening === undefined && closing === undefined) continue;
+        const existing = products.find((p) => normalizeName(p.name) === normalizeName(name));
+        const expiry = formatExcelValue(row[8]);
+        imported.push({
+          id: existing?.id || id(),
+          code: existing?.code || `IMP-${String(imported.length + 1).padStart(3, '0')}`,
+          name,
+          category: existing?.category || category,
+          unit: existing?.unit || guessUnit(name),
+          minimum: existing?.minimum || 0,
+          active: true,
+          stock: closing ?? opening ?? 0,
+          expiry: expiry || existing?.expiry,
+          note: String(row[9] || existing?.note || ''),
+        });
+      }
+      if (!imported.length) throw new Error('no rows');
+      if (!window.confirm(`พบสินค้า ${imported.length} รายการ\nต้องการใช้ยอดจากไฟล์นี้เป็นยอดคงคลังปัจจุบันหรือไม่?`)) return;
+      setProducts((current) => {
+        const ids = new Set(imported.map((p) => p.id));
+        return [...imported, ...current.filter((p) => !ids.has(p.id))];
+      });
+      notify(`นำเข้ายอดคงคลังจาก ${file.name} จำนวน ${imported.length} รายการแล้ว`);
+    } catch {
+      notify('อ่านไฟล์ไม่สำเร็จ กรุณาตรวจสอบรูปแบบ Excel');
+    }
+  };
+  const saveOpeningStock = () => {
+    if (!form.productId || form.stock < 0) return;
+    setProducts((all) =>
+      all.map((p) =>
+        p.id === form.productId
+          ? {
+              ...p,
+              stock: form.stock,
+              expiry: form.expiry || p.expiry,
+              note: [form.lot ? `Lot ${form.lot}` : '', form.note]
+                .filter(Boolean)
+                .join(' · ') || p.note,
+            }
+          : p,
+      ),
+    );
+    setOpen(false);
+    notify(`บันทึกยอดคงคลังปัจจุบันของ ${selected?.name || 'สินค้า'} แล้ว`);
+  };
+  return (
+    <>
+      <PageHead
+        icon={<Boxes />}
+        title="Stock คงคลัง"
+        sub="ยอดปัจจุบันแยกตามสินค้า หมวด และสาขา"
+        action={() => setOpen(!open)}
+        actionText={open ? 'ปิดแบบฟอร์ม' : '+ เพิ่มยอดคงคลังปัจจุบัน'}
+      />
+      <input
+        ref={inventoryFile}
+        hidden
+        type="file"
+        accept=".zip,.xlsx,.xls,.csv"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void importInventory(file);
+          e.target.value = '';
+        }}
+      />
+      <div className="inventory-import-row">
+        <button onClick={() => inventoryFile.current?.click()}>
+          <FileUp size={16} /> นำเข้า Excel ยอดคงคลัง
+        </button>
+        <span>รองรับไฟล์ ZIP จากระบบโดยตรง รวมถึง .xlsx, .xls และ .csv</span>
+      </div>
+      {open && (
+        <section className="ops-form panel opening-stock-form">
+          <div className="opening-note">
+            ใช้สำหรับบันทึกยอดที่นับได้จริงเป็นฐานเริ่มต้นของระบบ
+          </div>
+          <div className="form-grid">
+            <Field label="สาขา">
+              <select
+                value={form.branch}
+                onChange={(e) => setForm({ ...form, branch: e.target.value })}
+              >
+                {branches.map((branch) => <option key={branch}>{branch}</option>)}
+              </select>
+            </Field>
+            <Field label="สินค้า">
+              <select
+                value={form.productId}
+                onChange={(e) => {
+                  const product = products.find((p) => p.id === e.target.value);
+                  setForm({ ...form, productId: e.target.value, stock: product?.stock || 0 });
+                }}
+              >
+                {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="ยอดคงเหลือจริง">
+              <input type="number" min="0" step="0.01" value={form.stock} onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })} />
+            </Field>
+            <Field label="หน่วย">
+              <input value={selected?.unit || ''} readOnly />
+            </Field>
+            <Field label="Lot No.">
+              <input value={form.lot} onChange={(e) => setForm({ ...form, lot: e.target.value })} />
+            </Field>
+            <Field label="Exp.">
+              <input type="date" value={form.expiry} onChange={(e) => setForm({ ...form, expiry: e.target.value })} />
+            </Field>
+            <Field label="หมายเหตุ">
+              <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น ของการตลาด" />
+            </Field>
+          </div>
+          <div className="form-actions">
+            <button onClick={() => setOpen(false)}>ยกเลิก</button>
+            <button className="primary" onClick={saveOpeningStock}><Save size={15} /> บันทึกยอดตั้งต้น</button>
+          </div>
+        </section>
+      )}
+      <section className="ops-table panel">
+        <div className="ops-toolbar">
+          <label>
+            <Search size={16} />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="ค้นหาสินค้า..."
+            />
+          </label>
+          <select>
+            <option>ทุกหมวดสินค้า</option>
+            <option>Filler</option>
+            <option>Botox</option>
+            <option>อุปกรณ์</option>
+          </select>
+          <button onClick={printOperationalReport}>
+            <Printer size={15} /> พิมพ์
+          </button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>รหัส</th>
+              <th>สินค้า</th>
+              <th>หมวด</th>
+              <th>คงเหลือ</th>
+              <th>Minimum</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((p) => (
+              <tr key={p.id}>
+                <td>{p.code}</td>
+                <td>
+                  <strong>{p.name}</strong>
+                </td>
+                <td>{p.category}</td>
+                <td>
+                  <b>{p.stock}</b> {p.unit}
+                </td>
+                <td>
+                  {p.minimum} {p.unit}
+                </td>
+                <td>
+                  <span
+                    className={`status ${p.stock <= p.minimum ? 'low-status' : ''}`}
+                  >
+                    {p.stock <= p.minimum ? 'Stock ต่ำ' : 'ปกติ'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </>
+  );
+}
+function Products({
+  products,
+  setProducts,
+  notify,
+}: {
+  products: Product[];
+  setProducts: (v: Product[] | ((p: Product[]) => Product[])) => void;
+  notify: (s: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({
+    code: '',
+    name: '',
+    category: 'อุปกรณ์',
+    unit: 'อัน',
+    minimum: 0,
+  });
+  const save = () => {
+    if (!f.name) return;
+    setProducts((p) => [...p, { ...f, id: id(), active: true, stock: 0 }]);
+    setOpen(false);
+    notify('เพิ่มสินค้าในทะเบียนแล้ว');
+  };
+  return (
+    <>
+      <PageHead
+        icon={<Tags />}
+        title="ทะเบียนสินค้า"
+        sub="ชื่อมาตรฐาน หน่วยหลัก Minimum Stock และสถานะสินค้า"
+        action={() => setOpen(!open)}
+        actionText="+ เพิ่มสินค้า"
+      />
+      {open && (
+        <section className="ops-form panel">
+          <div className="form-grid">
+            <Field label="รหัสสินค้า">
+              <input
+                value={f.code}
+                onChange={(e) => setF({ ...f, code: e.target.value })}
+              />
+            </Field>
+            <Field label="ชื่อมาตรฐาน">
+              <input
+                value={f.name}
+                onChange={(e) => setF({ ...f, name: e.target.value })}
+              />
+            </Field>
+            <Field label="หมวด">
+              <input
+                value={f.category}
+                onChange={(e) => setF({ ...f, category: e.target.value })}
+              />
+            </Field>
+            <Field label="หน่วยหลัก">
+              <input
+                value={f.unit}
+                onChange={(e) => setF({ ...f, unit: e.target.value })}
+              />
+            </Field>
+            <Field label="Minimum Stock">
+              <input
+                type="number"
+                value={f.minimum}
+                onChange={(e) =>
+                  setF({ ...f, minimum: Number(e.target.value) })
+                }
+              />
+            </Field>
+          </div>
+          <div className="form-actions">
+            <button className="primary" onClick={save}>
+              <Save size={15} />
+              บันทึก
+            </button>
+          </div>
+        </section>
+      )}
+      <section className="ops-table panel">
+        <table>
+          <thead>
+            <tr>
+              <th>รหัส</th>
+              <th>ชื่อมาตรฐาน</th>
+              <th>หมวด</th>
+              <th>หน่วย</th>
+              <th>Minimum</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((p) => (
+              <tr key={p.id}>
+                <td>{p.code}</td>
+                <td>
+                  <strong>{p.name}</strong>
+                </td>
+                <td>{p.category}</td>
+                <td>{p.unit}</td>
+                <td>{p.minimum}</td>
+                <td>
+                  <button
+                    className={`toggle ${p.active ? 'on' : ''}`}
+                    onClick={() =>
+                      setProducts((all) =>
+                        all.map((x) =>
+                          x.id === p.id ? { ...x, active: !x.active } : x,
+                        ),
+                      )
+                    }
+                  >
+                    {p.active ? 'Active' : 'Inactive'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </>
+  );
+}
+function Reports({
+  records,
+  products,
+  notify,
+}: {
+  records: RecordRow[];
+  products: Product[];
+  notify: (s: string) => void;
+}) {
+  const [view, setView] = useState<'compare' | 'monthly'>('compare');
+  const [snapshots, setSnapshots] = useStored<StockSnapshot[]>('michiko-stock-snapshots', []);
+  const openingInput = useRef<HTMLInputElement>(null);
+  const latestInput = useRef<HTMLInputElement>(null);
+  const sortedSnapshots = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+  const [openingId, setOpeningId] = useState('');
+  const [closingId, setClosingId] = useState('');
+  useEffect(() => {
+    if (!sortedSnapshots.length) return;
+    const closing = sortedSnapshots.at(-1)!;
+    const opening = sortedSnapshots.at(-2) || closing;
+    if (!closingId || !snapshots.some((s) => s.id === closingId)) setClosingId(closing.id);
+    if (!openingId || !snapshots.some((s) => s.id === openingId)) setOpeningId(opening.id);
+  }, [snapshots]);
+  const openingSnapshot = snapshots.find((s) => s.id === openingId);
+  const closingSnapshot = snapshots.find((s) => s.id === closingId);
+  const comparison = useMemo(() => compareSnapshots(openingSnapshot, closingSnapshot), [openingSnapshot, closingSnapshot]);
+  const decreases = comparison.filter((row) => row.change < 0);
+  const increases = comparison.filter((row) => row.change > 0);
+  const importSnapshot = async (file: File, kind: 'opening' | 'latest') => {
+    try {
+      const snapshot = await readStockSnapshot(file);
+      setSnapshots((current) => [...current.filter((s) => s.date !== snapshot.date), snapshot].sort((a, b) => a.date.localeCompare(b.date)));
+      if (kind === 'opening') setOpeningId(snapshot.id); else setClosingId(snapshot.id);
+      notify(`บันทึกยอดคงคลังวันที่ ${formatSnapshotDate(snapshot.date)} แล้ว`);
+    } catch { notify('อ่านไฟล์ไม่ได้ กรุณาใช้ไฟล์ Stock Location Report จากระบบ'); }
+  };
+  const exportComparison = () => {
+    if (!openingSnapshot || !closingSnapshot) return;
+    const rows = comparison.map((row, index) => ({ ลำดับ: index + 1, รหัสสินค้า: row.code, สินค้า: row.name, หมวดหมู่: row.category, ยอดต้นงวด: row.opening, ยอดล่าสุด: row.closing, เปลี่ยนแปลง: row.change, หน่วย: row.unit, สถานะ: row.change < 0 ? 'ยอดลดลง' : row.change > 0 ? 'ยอดเพิ่มขึ้น' : 'ไม่เปลี่ยนแปลง' }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'เปรียบเทียบยอดคงคลัง');
+    XLSX.writeFile(workbook, `stock_comparison_${openingSnapshot.date}_${closingSnapshot.date}.xlsx`);
+  };
+  const incoming = records
+    .filter((r) => r.type === 'รับเข้า')
+    .reduce((n, r) => n + r.qty, 0);
+  const outgoing = records
+    .filter((r) => ['เบิกออก', 'โอนย้าย', 'ยืม'].includes(r.type))
+    .reduce((n, r) => n + r.qty, 0);
+  const movement = (product: string, types: string[]) =>
+    records
+      .filter((r) => r.product === product && types.includes(r.type))
+      .reduce((sum, r) => sum + r.qty, 0);
+  const categories = [...new Set(products.map((p) => p.category))];
+  return (
+    <>
+      <PageHead
+        icon={<ClipboardCheck />}
+        title="รายงานประจำเดือน"
+        sub="สรุปยอดรับเข้า Stock รายวัน เบิก โอน และยอดปลายเดือน"
+      />
+      <div className="report-tabs"><button className={view === 'compare' ? 'active' : ''} onClick={() => setView('compare')}>เปรียบเทียบยอดคงคลัง</button><button className={view === 'monthly' ? 'active' : ''} onClick={() => setView('monthly')}>รายงานส่งบัญชีสิ้นเดือน</button></div>
+      {view === 'compare' && <>
+        <input ref={openingInput} hidden type="file" accept=".zip,.xlsx,.xls,.csv" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importSnapshot(file, 'opening'); e.currentTarget.value = ''; }} />
+        <input ref={latestInput} hidden type="file" accept=".zip,.xlsx,.xls,.csv" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importSnapshot(file, 'latest'); e.currentTarget.value = ''; }} />
+        <section className="snapshot-controls panel"><div className="snapshot-select"><span>ยอดต้นงวด</span><select value={openingId} onChange={(e) => setOpeningId(e.target.value)}><option value="">ยังไม่มีข้อมูล</option>{sortedSnapshots.map((s) => <option key={s.id} value={s.id}>{formatSnapshotDate(s.date)} · {s.items.length} รายการ</option>)}</select><button onClick={() => openingInput.current?.click()}><FileUp size={15}/> เปลี่ยนไฟล์ต้นงวด</button></div><div className="compare-arrow">→</div><div className="snapshot-select"><span>ยอดล่าสุด</span><select value={closingId} onChange={(e) => setClosingId(e.target.value)}><option value="">ยังไม่มีข้อมูล</option>{sortedSnapshots.map((s) => <option key={s.id} value={s.id}>{formatSnapshotDate(s.date)} · {s.items.length} รายการ</option>)}</select><button className="primary" onClick={() => latestInput.current?.click()}><FileUp size={15}/> นำเข้าไฟล์ล่าสุด</button></div></section>
+        {openingSnapshot && closingSnapshot ? <><div className="report-metrics comparison-metrics"><Mini title="สินค้ายอดลดลง" value={`${decreases.length} รายการ`} /><Mini title="สินค้ายอดเพิ่มขึ้น" value={`${increases.length} รายการ`} /><Mini title="ช่วงที่เปรียบเทียบ" value={`${formatShortDate(openingSnapshot.date)}–${formatShortDate(closingSnapshot.date)}`} /><Mini title="สินค้าไม่เปลี่ยน" value={`${comparison.filter((r) => r.change === 0).length} รายการ`} /></div><section className="ops-table panel comparison-report"><div className="ops-toolbar"><strong>รายละเอียดการเปลี่ยนแปลงยอดคงคลัง</strong><button onClick={printOperationalReport}><Printer size={15}/> พิมพ์</button><button onClick={exportComparison}><FileDown size={15}/> Export Excel</button></div><table><thead><tr><th>รหัส</th><th>สินค้า</th><th>ต้นงวด</th><th>ล่าสุด</th><th>เปลี่ยนแปลง</th><th>หน่วย</th><th>สถานะ</th></tr></thead><tbody>{comparison.filter((r) => r.change !== 0).map((row) => <tr key={row.code}><td>{row.code}</td><td><strong>{row.name}</strong><small>{row.category}</small></td><td>{row.opening}</td><td>{row.closing}</td><td className={row.change < 0 ? 'change-down' : 'change-up'}>{row.change > 0 ? '+' : ''}{row.change}</td><td>{row.unit}</td><td><span className={`status ${row.change < 0 ? 'low-status' : ''}`}>{row.change < 0 ? 'ยอดลดลง' : 'ยอดเพิ่มขึ้น'}</span></td></tr>)}</tbody></table></section><p className="report-note">ยอดลดลงเป็นการเปลี่ยนแปลงสุทธิจากไฟล์สองวัน อาจเกิดจากใช้ เบิก โอน หรือปรับยอด ควรตรวจสอบกับ Stock Movement เมื่อต้องการแยกสาเหตุ</p></> : <section className="panel snapshot-empty"><Boxes/><h3>นำเข้าไฟล์ต้นงวดและไฟล์ล่าสุด</h3><p>ครั้งต่อไประบบจะจำยอดล่าสุดไว้เป็นต้นงวดให้โดยอัตโนมัติ</p></section>}
+      </>}
+      {view === 'monthly' && <>
+      <div className="report-metrics">
+        <Mini title="ยอดรับเข้า" value={`+ ${incoming}`} />
+        <Mini title="Stock รายวัน" value="- 32" />
+        <Mini title="เบิก / โอนออก" value={`- ${outgoing}`} />
+        <Mini
+          title="Stock คงเหลือ"
+          value={String(products.reduce((n, p) => n + p.stock, 0))}
+        />
+      </div>
+      <section className="ops-table panel">
+        <div className="ops-toolbar">
+          <select>
+            <option>กันยายน 2026</option>
+          </select>
+          <button onClick={printOperationalReport}>
+            <Printer size={15} /> พิมพ์รายงาน
+          </button>
+          <button>
+            <FileDown size={15} /> Export Excel
+          </button>
+        </div>
+        <table className="monthly-accounting-table">
+          <thead>
+            <tr>
+              <th>ลำดับ</th>
+              <th>สินค้า</th>
+              <th>ยอดคงคลังเดิม</th>
+              <th>จำนวนที่ใช้/ขายไป</th>
+              <th>จำนวนที่โอนย้าย</th>
+              <th>ยอดรับเข้า</th>
+              <th>ปรับยอด/คืน</th>
+              <th>ยอดคงคลังสิ้นเดือน</th>
+              <th>Exp.</th>
+              <th>หมายเหตุ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {categories.flatMap((category) => {
+              const list = products.filter((p) => p.category === category);
+              return [
+                <tr className="category-row" key={`cat-${category}`}><td colSpan={10}>{category}</td></tr>,
+                ...list.map((p, index) => {
+                  const received = movement(p.name, ['รับเข้า']);
+                  const transferred = movement(p.name, ['โอนย้าย']);
+                  const issued = movement(p.name, ['เบิกออก']);
+                  const borrowed = movement(p.name, ['ยืม']);
+                  const used = issued + borrowed;
+                  const opening = p.stock + used + transferred - received;
+                  return <tr key={p.id}><td>{index + 1}</td><td><strong>{p.name}</strong><small>{p.unit}</small></td><td>{opening}</td><td>{used || '-'}</td><td>{transferred || '-'}</td><td>{received || '-'}</td><td>-</td><td><b>{p.stock}</b> {p.unit}</td><td>{p.expiry || '-'}</td><td>{p.note || '-'}</td></tr>;
+                }),
+              ];
+            })}
+          </tbody>
+        </table>
+      </section>
+      </>}
+    </>
+  );
+}
+function Movements({ records }: { records: RecordRow[] }) {
+  return (
+    <>
+      <PageHead
+        icon={<History />}
+        title="ประวัติการเคลื่อนไหว"
+        sub="ตรวจสอบทุกการรับเข้า ใช้ โอน ยืม คืน เบิก และปรับยอด"
+      />
+      <RecordTable rows={records} page="ประวัติ" setRecords={() => {}} />
+    </>
+  );
+}
+function Preferences({ notify }: { notify: (s: string) => void }) {
+  return (
+    <>
+      <PageHead
+        icon={<Settings />}
+        title="ตั้งค่า"
+        sub="ข้อมูลสาขา ผู้ใช้งาน รายชื่อพนักงาน และรูปแบบเลขเอกสาร"
+      />
+      <section className="settings-grid">
+        <div className="panel setting-card">
+          <h3>สาขาในระบบ</h3>
+          <p>MICHIKO สาขาพหลโยธิน</p>
+          <p>MICHIKO สาขา Emsphere</p>
+          <button>
+            <Plus size={14} /> เพิ่มสาขา
+          </button>
+        </div>
+        <div className="panel setting-card">
+          <h3>รายชื่อผู้ช่วย</h3>
+          <p>แพรว · เมย์ · น้ำ · ปุ้ย · เฟิร์น · ออม</p>
+          <button>
+            <Plus size={14} /> เพิ่มพนักงาน
+          </button>
+        </div>
+        <div className="panel setting-card">
+          <h3>ข้อมูลผู้ใช้งาน</h3>
+          <p>พิชญาภรณ์ · ผู้ดูแลระบบ</p>
+          <button onClick={() => notify('บันทึกการตั้งค่าแล้ว')}>
+            <Save size={14} /> บันทึกการตั้งค่า
+          </button>
+        </div>
+      </section>
+    </>
+  );
+}
+function PageHead({
+  icon,
+  title,
+  sub,
+  action,
+  actionText,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  sub: string;
+  action?: () => void;
+  actionText?: string;
+}) {
+  return (
+    <div className="ops-head">
+      <div className="ops-title-icon">{icon}</div>
+      <div>
+        <h1>{title}</h1>
+        <p>{sub}</p>
+      </div>
+      {action && <button onClick={action}>{actionText}</button>}
+    </div>
+  );
+}
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+function Empty({ text }: { text: string }) {
+  return (
+    <div className="ops-empty">
+      <Boxes />
+      <span>{text}</span>
+    </div>
+  );
+}
+function Mini({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="panel report-mini">
+      <span>{title}</span>
+      <strong>{value}</strong>
+      <small>รายการ</small>
+    </div>
+  );
+}
+function docNo(type: string, index: number) {
+  const pre =
+    type === 'รับเข้า'
+      ? 'RC'
+      : type === 'โอนย้าย'
+        ? 'TF'
+        : type === 'ยืม'
+          ? 'LN'
+          : type === 'เบิกออก'
+            ? 'IS'
+            : 'CT';
+  return `${pre}-2609-${String(index + 1).padStart(3, '0')}`;
+}
+
+function normalizeName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9ก-๙]/g, '');
+}
+
+async function readStockSnapshot(file: File): Promise<StockSnapshot> {
+  let fileData: ArrayBuffer | Uint8Array = await file.arrayBuffer();
+  if (file.name.toLowerCase().endsWith('.zip')) {
+    const zip = await JSZip.loadAsync(fileData);
+    const entry = Object.values(zip.files).find((item) => !item.dir && /\.(csv|xlsx|xls)$/i.test(item.name));
+    if (!entry) throw new Error('missing sheet');
+    fileData = await entry.async('uint8array');
+  }
+  const workbook = XLSX.read(fileData, { type: 'array', cellDates: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: true });
+  const headerIndex = rows.findIndex((row) => row.some((cell) => String(cell).replace(/^\uFEFF/, '').trim() === 'ชื่อยา'));
+  if (headerIndex < 0) throw new Error('invalid report');
+  const headers = rows[headerIndex].map((cell) => String(cell).replace(/^\uFEFF/, '').trim());
+  const column = (name: string) => headers.findIndex((header) => header.includes(name));
+  const codeCol = column('รหัสยา'), nameCol = column('ชื่อยา'), categoryCol = column('หมวดหมู่'), unitCol = column('หน่วย'), stockCol = column('ยอดคงคลัง ณ วันที่เลือก');
+  const grouped = new Map<string, StockSnapshotItem>();
+  for (const row of rows.slice(headerIndex + 1)) {
+    const name = String(row[nameCol] || '').trim(); if (!name) continue;
+    const code = String(row[codeCol] || name).trim(), current = grouped.get(code), quantity = Number(row[stockCol]) || 0;
+    if (current) current.stock += quantity; else grouped.set(code, { code, name, category: String(row[categoryCol] || 'อื่น ๆ'), unit: String(row[unitCol] || 'อัน'), stock: quantity });
+  }
+  const match = file.name.match(/(20\d{2})[-_](\d{2})[-_](\d{2})/), date = match ? `${match[1]}-${match[2]}-${match[3]}` : today();
+  const items = [...grouped.values()]; if (!items.length) throw new Error('empty report');
+  return { id: `${date}-${Date.now()}`, date, fileName: file.name, items };
+}
+function compareSnapshots(opening?: StockSnapshot, closing?: StockSnapshot) {
+  if (!opening || !closing) return [];
+  const all = new Map<string, { code: string; name: string; category: string; unit: string; opening: number; closing: number; change: number }>();
+  opening.items.forEach((item) => all.set(item.code, { ...item, opening: item.stock, closing: 0, change: -item.stock }));
+  closing.items.forEach((item) => { const previous = all.get(item.code); if (previous) Object.assign(previous, { closing: item.stock, change: item.stock - previous.opening }); else all.set(item.code, { ...item, opening: 0, closing: item.stock, change: item.stock }); });
+  return [...all.values()].sort((a, b) => Math.abs(b.change) - Math.abs(a.change) || a.name.localeCompare(b.name, 'th'));
+}
+function formatSnapshotDate(date: string) { return new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${date}T00:00:00`)); }
+function formatShortDate(date: string) { const [year, month, day] = date.split('-'); return `${day}/${month}/${Number(year) + 543}`; }
+function printOperationalReport() {
+  document.body.classList.add('operations-print');
+  const cleanup = () => document.body.classList.remove('operations-print');
+  window.addEventListener('afterprint', cleanup, { once: true });
+  window.print();
+  window.setTimeout(cleanup, 1000);
+}
+
+function guessUnit(name: string) {
+  const text = name.toLowerCase();
+  if (text.includes('cc') || text.includes('ml')) return text.includes('ml') ? 'ml' : 'cc';
+  if (text.includes('unit') || text.includes('s.u')) return 'Unit';
+  if (text.includes('ขวด') || text.includes('vial')) return 'ขวด';
+  if (text.includes('กล่อง')) return 'กล่อง';
+  if (text.includes('amp')) return 'Amp.';
+  if (text.includes('line')) return 'line';
+  return 'อัน';
+}
+
+function formatExcelValue(value: unknown) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'number' && value > 20000) {
+    const date = XLSX.SSF.parse_date_code(value);
+    return `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
+  }
+  return String(value || '').trim();
+}
