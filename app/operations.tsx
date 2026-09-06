@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useSharedStored } from '@/hooks/use-shared-stored';
 import { ThaiDateInput } from '@/components/thai-date-input';
 import {
@@ -35,8 +36,11 @@ type RecordRow = {
   status: string;
   type: string;
   lot?: string;
+  mfg?: string;
   exp?: string;
+  attachment?: string;
 };
+type ReceiveDraft = { product: string; qty: number; unit: string; lot: string; mfg: string; exp: string };
 type Product = {
   id: string;
   code: string;
@@ -181,12 +185,30 @@ function TransactionPage({
         : '',
     note: '',
     lot: '',
+    mfg: '',
     exp: '',
+    attachment: '',
     movementType: page === 'ยืม / คืน' ? 'ยืม' : cfg.type,
   });
+  const [receiveDrafts, setReceiveDrafts] = useState<ReceiveDraft[]>([]);
+  const receiveFileRef = useRef<HTMLInputElement>(null);
   const branchTradeTypes = ['ยืม', 'คืน', 'ซื้อจากสาขา', 'ขายให้สาขา'];
   const rows = records.filter((r) => page === 'ยืม / คืน' ? branchTradeTypes.includes(r.type) : r.type === cfg.type);
   const save = () => {
+    if (page === 'รับเข้า' && receiveDrafts.length) {
+      setRecords((current) => [
+        ...receiveDrafts.map((item) => ({
+          id: id(), date: form.date, branch: form.branch, party: form.party,
+          note: form.note, status: 'บันทึกแล้ว', type: 'รับเข้า',
+          attachment: form.attachment, ...item,
+        })),
+        ...current,
+      ]);
+      setReceiveDrafts([]);
+      setOpen(false);
+      notify(`บันทึกรับเข้า ${receiveDrafts.length} รายการจากเอกสารแล้ว`);
+      return;
+    }
     if (!form.product || form.qty <= 0) return;
     if (
       (page === 'ยืม / คืน' || page === 'โอนย้ายสาขา') &&
@@ -213,6 +235,22 @@ function TransactionPage({
       />
       {open && (
         <section className="ops-form panel">
+          {page === 'รับเข้า' && <div className="receive-document-import">
+            <input ref={receiveFileRef} type="file" accept=".pdf" hidden onChange={async (event) => {
+              const file = event.target.files?.[0]; if (!file) return;
+              try {
+                const parsed = await parseJeraReceivePdf(file, products);
+                if (!parsed.items.length) throw new Error('no items');
+                setReceiveDrafts(parsed.items);
+                const first = parsed.items[0];
+                setForm((current) => ({ ...current, product: first.product, qty: first.qty, unit: first.unit, lot: first.lot, mfg: first.mfg, exp: first.exp, party: parsed.supplier || current.party, note: parsed.po ? `PO ${parsed.po}` : current.note, attachment: file.name }));
+                notify(`อ่านเอกสารสำเร็จ ${parsed.items.length} รายการ`);
+              } catch { notify('อ่านเอกสารรับเข้าไม่ได้ กรุณาใช้ PDF ใบรับยาเข้าคลังจาก JERA'); }
+              event.target.value = '';
+            }}/>
+            <button type="button" onClick={() => receiveFileRef.current?.click()}><FileUp size={16}/> แนบ PDF ใบรับยาเข้าคลัง</button>
+            <span>{form.attachment ? `${form.attachment} · พบ ${receiveDrafts.length} รายการ` : 'ระบบจะกรอกสินค้า Lot วันผลิต และวันหมดอายุให้อัตโนมัติ'}</span>
+          </div>}
           <div className="form-grid">
             {page === 'ยืม / คืน' && <Field label="ประเภทรายการ"><select value={form.movementType} onChange={(e) => setForm({ ...form, movementType: e.target.value })}><option>ยืม</option><option>คืน</option><option>ซื้อจากสาขา</option><option>ขายให้สาขา</option></select></Field>}
             <Field label="วันที่">
@@ -293,6 +331,9 @@ function TransactionPage({
                     onChange={(e) => setForm({ ...form, lot: e.target.value })}
                   />
                 </Field>
+                <Field label="วันผลิต">
+                  <ThaiDateInput value={form.mfg} onChange={(mfg) => setForm({ ...form, mfg })} />
+                </Field>
                 <Field label="วันหมดอายุ">
                   <ThaiDateInput value={form.exp} onChange={(exp) => setForm({ ...form, exp })} />
                 </Field>
@@ -305,6 +346,7 @@ function TransactionPage({
               />
             </Field>
           </div>
+          {page === 'รับเข้า' && receiveDrafts.length > 0 && <div className="receive-import-preview"><strong>รายการจากเอกสาร</strong><div>{receiveDrafts.map((item) => <p key={`${item.product}-${item.lot}`}><span>{item.product}</span><b>{item.qty} {item.unit}</b><small>Lot {item.lot || '-'} · ผลิต {displayIsoDate(item.mfg)} · หมดอายุ {displayIsoDate(item.exp)}</small></p>)}</div></div>}
           <div className="form-actions">
             <button onClick={() => setOpen(false)}>ยกเลิก</button>
             <button className="primary" onClick={save}>
@@ -373,7 +415,7 @@ function RecordTable({
                 </td>
                 <td>
                   {r.party || '-'}
-                  <small>{r.note}</small>
+                  <small>{[r.lot && `Lot ${r.lot}`, r.mfg && `ผลิต ${formatShortDate(r.mfg)}`, r.exp && `หมดอายุ ${formatShortDate(r.exp)}`, r.note, r.attachment].filter(Boolean).join(' · ')}</small>
                 </td>
                 <td>
                   <span
@@ -835,10 +877,12 @@ function Reports({
   records,
   products,
   notify,
+  dailyCases,
 }: {
   records: RecordRow[];
   products: Product[];
   notify: (s: string) => void;
+  dailyCases: Array<{ date: string; items: Array<{ name: string; qty: number }> }>;
 }) {
   const [view, setView] = useState<'compare' | 'monthly'>('compare');
   const [snapshots, setSnapshots] = useSharedStored<StockSnapshot[]>('michiko-stock-snapshots', []);
@@ -1149,13 +1193,64 @@ function compareSnapshots(opening?: StockSnapshot, closing?: StockSnapshot) {
 }
 function formatSnapshotDate(date: string) { return new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${date}T00:00:00`)); }
 function formatShortDate(date: string) { const [year, month, day] = date.split('-'); return `${day}/${month}/${Number(year) + 543}`; }
+function displayIsoDate(date: string) { return date ? formatShortDate(date) : '-'; }
 function formatQty(value: number) { return new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(value); }
+
+async function parseJeraReceivePdf(file: File, products: Product[]) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+  const document = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const tokens: string[] = [];
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const content = await (await document.getPage(pageNumber)).getTextContent();
+    for (const item of content.items) {
+      if ('str' in item && item.str.trim()) tokens.push(item.str.trim());
+    }
+  }
+  const allText = tokens.join('');
+  const po = allText.match(/26854-4-\d+/)?.[0] || '';
+  const supplier = tokens.find((token) => token.startsWith('บริษัท') && token.length > 12) || '';
+  const codeIndexes = tokens.map((token, index) => ({ token, index })).filter(({ token }) => /^[A-Z]{1,3}\d{3}$/.test(token));
+  const toIso = (date: string) => { const [day, month, year] = date.split('-'); return `${year}-${month}-${day}`; };
+  const items: ReceiveDraft[] = codeIndexes.map(({ token: code, index }, position) => {
+    const end = codeIndexes[position + 1]?.index ?? tokens.length;
+    const segment = tokens.slice(index + 1, end);
+    const segmentText = segment.join('');
+    const product = products.find((candidate) => candidate.code === code);
+    const fallbackName = segment.find((value) => /[A-Za-zก-๙]/.test(value) && !/^(Stock|Room|supp lot)/i.test(value))?.replace(/\s*\(1\)\s*$/, '') || code;
+    const quantity = Number(segment.find((value) => /^\d+(?:\.\d+)?$/.test(value.replace(/,/g, '')))?.replace(/,/g, '')) || 1;
+    const dates = [...segmentText.matchAll(/(\d{2}-\d{2}-\d{4})/g)].map((match) => match[1]);
+    return {
+      product: product?.name || fallbackName,
+      qty: quantity,
+      unit: product?.unit || segment.find((value) => ['ขวด', 'กล่อง', 'อัน', 'ชิ้น', 'cc', 'ml', 'ชุด'].includes(value)) || 'อัน',
+      lot: segmentText.match(/supp lot no\.:\s*([^;]+)/i)?.[1]?.trim() || '',
+      mfg: dates[0] ? toIso(dates[0]) : '',
+      exp: dates[1] ? toIso(dates[1]) : '',
+    };
+  });
+  return { po, supplier, items };
+}
 function printOperationalReport() {
   document.body.classList.add('operations-print');
-  const cleanup = () => document.body.classList.remove('operations-print');
-  window.addEventListener('afterprint', cleanup, { once: true });
-  window.print();
-  window.setTimeout(cleanup, 1000);
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.body.classList.remove('operations-print');
+    window.removeEventListener('afterprint', cleanup);
+    printMedia.removeEventListener('change', handlePrintChange);
+  };
+  const handlePrintChange = (event: MediaQueryListEvent) => {
+    if (!event.matches) cleanup();
+  };
+  const printMedia = window.matchMedia('print');
+  window.addEventListener('afterprint', cleanup);
+  printMedia.addEventListener('change', handlePrintChange);
+  // Let the browser apply the A4 report styles before it captures the page.
+  window.requestAnimationFrame(() =>
+    window.requestAnimationFrame(() => window.print()),
+  );
 }
 
 function guessUnit(name: string) {

@@ -55,6 +55,7 @@ type Case = {
   doctor: string;
   program: string;
   assistants: string[];
+  note?: string;
   items: Item[];
   backdated: boolean;
   needsReview: boolean;
@@ -106,7 +107,7 @@ export default function Home() {
   const [page, setPage] = useState<string>('Dashboard');
   const [cases, setCases] = useSharedStored<Case[]>('michiko-stock-cases', seed);
   const [importHashes, setImportHashes] = useSharedStored<string[]>('michiko-stock-imports', []);
-  const [assistants] = useSharedStored<string[]>('michiko-assistants', []);
+  const [assistants, setAssistants] = useSharedStored<string[]>('michiko-assistants', []);
   const [doctors] = useSharedStored<string[]>('michiko-doctors', []);
   const [dashboardProducts] = useSharedStored<DashboardProduct[]>('michiko-products', []);
   const [dashboardRecords] = useSharedStored<DashboardRecord[]>('michiko-operations', []);
@@ -280,6 +281,7 @@ export default function Home() {
               openImport={() => fileRef.current?.click()}
               notify={notify}
               assistants={assistants}
+              rememberAssistant={(name) => setAssistants((current) => current.includes(name) ? current : [...current, name])}
               doctors={doctors}
               date={dailyDate}
               setDate={setDailyDate}
@@ -510,6 +512,7 @@ function Daily({
   openImport,
   notify,
   assistants,
+  rememberAssistant,
   doctors,
   date,
   setDate,
@@ -520,6 +523,7 @@ function Daily({
   openImport: () => void;
   notify: (s: string) => void;
   assistants: string[];
+  rememberAssistant: (name: string) => void;
   doctors: string[];
   date: string;
   setDate: (date: string) => void;
@@ -576,6 +580,7 @@ function Daily({
               remove={remove}
               notify={notify}
               assistants={assistants}
+              rememberAssistant={rememberAssistant}
               doctors={doctors}
             />
           ))}
@@ -636,6 +641,7 @@ function PrintPreview({ cases, close }: { cases: Case[]; close: () => void }) {
                 <div className="print-case-meta">
                   <div><span>แพทย์</span><strong>{c.doctor || '-'}</strong></div>
                   <div><span>ผู้ช่วย</span><strong>{c.assistants.join(', ') || '-'}</strong></div>
+                  {c.note && <div className="print-case-note"><span>หมายเหตุ</span><strong>{c.note}</strong></div>}
                   <div><span>โปรแกรม / บริการ</span><strong>{c.program || '-'}</strong></div>
                 </div>
                 <table><thead><tr><th>ลำดับ</th><th>รายการ Stock</th><th>จำนวน</th><th>หน่วย</th><th>แหล่งข้อมูล</th></tr></thead>
@@ -661,6 +667,7 @@ function CaseCard({
   remove,
   notify,
   assistants,
+  rememberAssistant,
   doctors,
 }: {
   data: Case;
@@ -669,11 +676,13 @@ function CaseCard({
   remove: (id: string) => void;
   notify: (s: string) => void;
   assistants: string[];
+  rememberAssistant: (name: string) => void;
   doctors: string[];
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data);
   const [adding, setAdding] = useState(false);
+  const [assistantEntry, setAssistantEntry] = useState('');
   const [newItem, setNewItem] = useState({ name: '', qty: 1, unit: 'อัน' });
   useEffect(() => setDraft(data), [data]);
   const save = () => {
@@ -789,24 +798,21 @@ function CaseCard({
               </b>
             ))}
             {editing && (
-              <select
-                value=""
-                onChange={(e) =>
-                  e.target.value &&
-                  setDraft({
-                    ...draft,
-                    assistants: draft.assistants.concat(e.target.value),
-                  })
-                }
-              >
-                <option value="">+ เพิ่มผู้ช่วย</option>
-                {assistants.filter((s) => !draft.assistants.includes(s)).map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
+              <>
+                <select value="" onChange={(e) => e.target.value && setDraft({ ...draft, assistants: draft.assistants.concat(e.target.value) })}>
+                  <option value="">เลือกรายชื่อผู้ช่วย</option>
+                  {assistants.filter((s) => !draft.assistants.includes(s)).map((s) => <option key={s}>{s}</option>)}
+                </select>
+                <span className="assistant-inline-entry"><input value={assistantEntry} onChange={(e) => setAssistantEntry(e.target.value)} placeholder="พิมพ์ชื่อผู้ช่วย"/><button type="button" onClick={() => { const name = assistantEntry.trim(); if (!name) return; if (!draft.assistants.includes(name)) setDraft({ ...draft, assistants: [...draft.assistants, name] }); rememberAssistant(name); setAssistantEntry(''); }}><Plus size={12}/> เพิ่ม</button></span>
+              </>
             )}
             {!editing && !data.assistants.length && <em>ยังไม่ได้เลือก</em>}
           </div>
+        </label>
+        <label className="case-note-field">
+          <ClipboardPlus size={16} />
+          <span>หมายเหตุ</span>
+          {editing ? <input value={draft.note || ''} onChange={(e) => setDraft({ ...draft, note: e.target.value })} placeholder="หมายเหตุประจำเคส"/> : <strong>{data.note || '-'}</strong>}
         </label>
       </div>
       <div className="stock-table">
@@ -1013,6 +1019,7 @@ function parseRows(rows: Record<string, unknown>[]) {
         doctor: r.doctor,
         program: r.program,
         assistants: [],
+        note: '',
         items: [],
         backdated: date < new Date().toISOString().slice(0, 10),
         needsReview: !r.hn || !r.doctor || !r.program,
