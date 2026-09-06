@@ -111,6 +111,7 @@ export default function Home() {
   const [dashboardProducts] = useSharedStored<DashboardProduct[]>('michiko-products', []);
   const [dashboardRecords] = useSharedStored<DashboardRecord[]>('michiko-operations', []);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [dailyDate, setDailyDate] = useState('');
   const [toast, setToast] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -245,6 +246,7 @@ export default function Home() {
     if (!preview || preview.duplicate) return;
     setCases((prev) => [...preview.cases, ...prev]);
     setImportHashes((hashes) => [...hashes, preview.hash]);
+    setDailyDate(preview.date);
     setPreview(null);
     setPage('Stock รายวัน');
     notify('นำเข้ารายงานเรียบร้อยแล้ว');
@@ -279,6 +281,8 @@ export default function Home() {
               notify={notify}
               assistants={assistants}
               doctors={doctors}
+              date={dailyDate}
+              setDate={setDailyDate}
             />
           ) : (
             <OperationalPage page={page} notify={notify} />
@@ -507,6 +511,8 @@ function Daily({
   notify,
   assistants,
   doctors,
+  date,
+  setDate,
 }: {
   cases: Case[];
   update: (c: Case) => void;
@@ -515,9 +521,10 @@ function Daily({
   notify: (s: string) => void;
   assistants: string[];
   doctors: string[];
+  date: string;
+  setDate: (date: string) => void;
 }) {
   const [query, setQuery] = useState('');
-  const [date, setDate] = useState('');
   const [showPrint, setShowPrint] = useState(false);
   const filtered = cases.filter(
     (c) =>

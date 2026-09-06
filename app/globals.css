@@ -598,4 +598,4 @@ body {
     display: none;
   }
 }
-.thai-date-input{display:grid;grid-template-columns:.75fr 1fr 1fr;gap:5px}.thai-date-input select{min-width:0;height:37px;border:1px solid #dfd1cf;border-radius:9px;background:#fff;padding:0 6px;color:var(--ink)}
+.thai-date-input{display:flex;align-items:center;gap:7px;min-width:180px;height:37px;border:1px solid #dfd1cf;border-radius:9px;background:#fff;padding:0 8px;color:var(--ink)}.thai-date-input input{min-width:0;flex:1;height:35px;border:0!important;background:transparent;padding:0!important;color:var(--ink);font:inherit}.thai-date-input input:focus{outline:0}.thai-date-input button{display:grid;place-items:center;border:0;background:transparent;color:#92787b;padding:2px;cursor:pointer}
