@@ -529,9 +529,11 @@ function Daily({
 }) {
   const [query, setQuery] = useState('');
   const [showPrint, setShowPrint] = useState(false);
+  const latestDate = cases.reduce((latest, item) => item.date > latest ? item.date : latest, '');
+  const currentDate = date || latestDate || new Date().toLocaleDateString('sv-SE');
   const filtered = cases.filter(
     (c) =>
-      (!date || c.date === date) &&
+      c.date === currentDate &&
       `${c.hn} ${c.patient} ${c.doctor} ${c.program}`
         .toLowerCase()
         .includes(query.toLowerCase()),
@@ -562,7 +564,7 @@ function Daily({
             placeholder="ค้นหาชื่อ, HN, แพทย์ หรือโปรแกรม"
           />
         </label>
-        <ThaiDateInput value={date} onChange={setDate} />
+        <ThaiDateInput value={currentDate} onChange={setDate} allowClear={false} />
         <span>
           พบ {filtered.length} เคส ·{' '}
           {filtered.reduce((n, c) => n + c.items.length, 0)} รายการ
