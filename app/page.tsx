@@ -209,10 +209,20 @@ export default function Home() {
           .join(''),
       );
       const workbook = XLSX.read(buf, { type: 'array', cellDates: true });
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-        workbook.Sheets[workbook.SheetNames[0]],
-        { defval: '' },
-      );
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+        header: 1,
+        defval: '',
+        raw: false,
+      });
+      const headerRow = rawRows.findIndex((row) => {
+        const cells = row.map((cell) => String(cell).trim());
+        return cells.includes('ชื่อยา') && cells.includes('จำนวน') && cells.includes('วันที่');
+      });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+        defval: '',
+        range: headerRow >= 0 ? headerRow : 0,
+      });
       const parsed = parseRows(rows);
       if (!parsed.cases.length) {
         notify('ไม่พบรายการ Stock Movement ในไฟล์นี้ หากเป็นไฟล์ยอดคงคลังให้นำเข้าที่เมนู Stock คงคลัง');
@@ -955,20 +965,27 @@ function ImportModal({
 
 function parseRows(rows: Record<string, unknown>[]) {
   const val = (r: Record<string, unknown>, names: string[]) => {
-    const key = Object.keys(r).find((k) =>
-      names.some((n) => k.toLowerCase().replace(/\s/g, '').includes(n)),
-    );
-    return key ? String(r[key] ?? '').trim() : '';
+    const keys = Object.keys(r);
+    const clean = (text: string) => text.toLowerCase().replace(/\s/g, '');
+    for (const name of names) {
+      const target = clean(name);
+      const key =
+        keys.find((candidate) => clean(candidate) === target) ||
+        keys.find((candidate) => clean(candidate).includes(target));
+      const value = key ? String(r[key] ?? '').trim() : '';
+      if (value && value !== '-') return value;
+    }
+    return '';
   };
   const valid = rows
     .map((r) => ({
       patient: val(r, ['ชื่อผู้ป่วย', 'ชื่อลูกค้า', 'patient', 'customer']),
-      hn: val(r, ['hn', 'หมายเลขผู้ป่วย']),
-      doctor: val(r, ['แพทย์', 'doctor']),
+      hn: val(r, ['หมายเลขผู้ป่วย', 'hn']),
+      doctor: val(r, ['ชื่อแพทย์', 'แพทย์', 'doctor']),
       stock: val(r, ['ชื่อยา', 'ชื่อstock', 'สินค้า', 'product', 'item']),
       qty: val(r, ['จำนวน', 'qty', 'quantity']),
       unit: val(r, ['หน่วย', 'unit']),
-      program: val(r, ['รายละเอียดบริการ', 'บริการ', 'program', 'service']),
+      program: val(r, ['รายละเอียด', 'ชื่อบริการ', 'ชื่อคอร์ส', 'บริการ', 'program', 'service']),
       date: val(r, ['วันที่', 'date']),
     }))
     .filter((r) => r.stock && (r.hn || r.patient));
