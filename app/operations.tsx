@@ -427,7 +427,7 @@ function RecordTable({
   return (
     <section className="ops-table panel">
       <div className="report-print-head">
-        <img src="/michiko-logo.png" alt="MICHIKO" />
+        <span className="report-logo-crop"><img src="/michiko-logo.png" alt="MICHIKO" /></span>
         <div><h2>{printTitle}</h2><p>{printPeriod} · MICHIKO สาขา Emsphere</p></div>
       </div>
       <div className="ops-toolbar">
@@ -745,7 +745,7 @@ function Inventory({
       )}
       <section className="ops-table panel">
         <div className="report-print-head">
-          <img src="/michiko-logo.png" alt="MICHIKO" />
+          <span className="report-logo-crop"><img src="/michiko-logo.png" alt="MICHIKO" /></span>
           <div><h2>รายงาน Stock คงคลัง</h2><p>{formatShortDate(today())} · MICHIKO สาขา Emsphere</p></div>
         </div>
         <div className="ops-toolbar">
@@ -886,7 +886,7 @@ function Products({
       )}
       <section className="ops-table panel">
         <div className="report-print-head">
-          <img src="/michiko-logo.png" alt="MICHIKO" />
+          <span className="report-logo-crop"><img src="/michiko-logo.png" alt="MICHIKO" /></span>
           <div><h2>ทะเบียนสินค้า</h2><p>พิมพ์เมื่อ {formatShortDate(today())} · MICHIKO</p></div>
         </div>
         <table>
@@ -1049,7 +1049,7 @@ function Reports({
         <input ref={openingInput} hidden type="file" accept=".zip,.xlsx,.xls,.csv" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importSnapshot(file, 'opening'); e.currentTarget.value = ''; }} />
         <input ref={latestInput} hidden type="file" accept=".zip,.xlsx,.xls,.csv" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importSnapshot(file, 'latest'); e.currentTarget.value = ''; }} />
         <section className="snapshot-controls panel"><div className="snapshot-select"><span>ยอดต้นงวด</span><select value={openingId} onChange={(e) => setOpeningId(e.target.value)}><option value="">ยังไม่มีข้อมูล</option>{sortedSnapshots.map((s) => <option key={s.id} value={s.id}>{formatSnapshotDate(s.date)} · {s.items.length} รายการ</option>)}</select><button onClick={() => openingInput.current?.click()}><FileUp size={15}/> เปลี่ยนไฟล์ต้นงวด</button></div><div className="compare-arrow">→</div><div className="snapshot-select"><span>ยอดล่าสุด</span><select value={closingId} onChange={(e) => setClosingId(e.target.value)}><option value="">ยังไม่มีข้อมูล</option>{sortedSnapshots.map((s) => <option key={s.id} value={s.id}>{formatSnapshotDate(s.date)} · {s.items.length} รายการ</option>)}</select><button className="primary" onClick={() => latestInput.current?.click()}><FileUp size={15}/> นำเข้าไฟล์ล่าสุด</button></div></section>
-        {openingSnapshot && closingSnapshot ? <><div className="report-metrics comparison-metrics"><Mini title="สินค้ายอดลดลง" value={`${decreases.length} รายการ`} /><Mini title="สินค้ายอดเพิ่มขึ้น" value={`${increases.length} รายการ`} /><Mini title="ช่วงที่เปรียบเทียบ" value={`${formatShortDate(openingSnapshot.date)}–${formatShortDate(closingSnapshot.date)}`} /><Mini title="รายการสำคัญในรายงาน" value={`${importantRows.length} รายการ`} /></div><section className="ops-table panel comparison-report"><div className="report-print-head"><img src="/michiko-logo.png" alt="MICHIKO"/><div><h2>รายงานสรุปการเคลื่อนไหว Stock</h2><p>{formatShortDate(openingSnapshot.date)} ถึง {formatShortDate(closingSnapshot.date)} · MICHIKO สาขา Emsphere</p></div></div><div className="ops-toolbar"><strong>รายการเคลื่อนไหวสำคัญ 15 อันดับ</strong><button onClick={printOperationalReport}><Printer size={15}/> พิมพ์</button><button onClick={exportComparison}><FileDown size={15}/> Export Excel</button></div><table className="movement-summary-table"><thead><tr><th>รหัส / สินค้า</th><th>ต้นงวด</th><th>รับเข้า</th><th>ใช้/ขาย</th><th>ยืม</th><th>โอน</th><th>ปรับยอด*</th><th>คงเหลือ</th><th>หน่วย</th></tr></thead><tbody>{importantRows.map((row) => <tr key={row.code}><td><strong>{row.code} · {row.name}</strong><small>{row.category}</small></td><td>{formatQty(row.opening)}</td><td>{row.received ? formatQty(row.received) : '-'}</td><td>{row.used ? formatQty(row.used) : '-'}</td><td>{row.borrowed ? formatQty(row.borrowed) : '-'}</td><td>{row.transferred ? formatQty(row.transferred) : '-'}</td><td className={row.adjustment < 0 ? 'change-down' : row.adjustment > 0 ? 'change-up' : ''}>{row.adjustment ? `${row.adjustment > 0 ? '+' : ''}${formatQty(row.adjustment)}` : '-'}</td><td><b>{formatQty(row.closing)}</b></td><td>{row.unit}</td></tr>)}</tbody></table></section><p className="report-note">* ปรับยอด/รอตรวจสอบ คือผลต่างที่ยังไม่มีเอกสารรับเข้า Stock รายวัน เบิก ยืม หรือโอนในระบบ เมื่อนำเข้าเอกสาร JERA ตัวเลขจะถูกแยกเข้าช่องที่ถูกต้อง</p></> : <section className="panel snapshot-empty"><Boxes/><h3>นำเข้าไฟล์ต้นงวดและไฟล์ล่าสุด</h3><p>ครั้งต่อไประบบจะจำยอดล่าสุดไว้เป็นต้นงวดให้โดยอัตโนมัติ</p></section>}
+        {openingSnapshot && closingSnapshot ? <><div className="report-metrics comparison-metrics"><Mini title="สินค้ายอดลดลง" value={`${decreases.length} รายการ`} /><Mini title="สินค้ายอดเพิ่มขึ้น" value={`${increases.length} รายการ`} /><Mini title="ช่วงที่เปรียบเทียบ" value={`${formatShortDate(openingSnapshot.date)}–${formatShortDate(closingSnapshot.date)}`} /><Mini title="รายการสำคัญในรายงาน" value={`${importantRows.length} รายการ`} /></div><section className="ops-table panel comparison-report"><div className="report-print-head"><span className="report-logo-crop"><img src="/michiko-logo.png" alt="MICHIKO"/></span><div><h2>รายงานสรุปการเคลื่อนไหว Stock</h2><p>{formatShortDate(openingSnapshot.date)} ถึง {formatShortDate(closingSnapshot.date)} · MICHIKO สาขา Emsphere</p></div></div><div className="ops-toolbar"><strong>รายการเคลื่อนไหวสำคัญ 15 อันดับ</strong><button onClick={printOperationalReport}><Printer size={15}/> พิมพ์</button><button onClick={exportComparison}><FileDown size={15}/> Export Excel</button></div><table className="movement-summary-table"><thead><tr><th>รหัส / สินค้า</th><th>ต้นงวด</th><th>รับเข้า</th><th>ใช้/ขาย</th><th>ยืม</th><th>โอน</th><th>ปรับยอด*</th><th>คงเหลือ</th><th>หน่วย</th></tr></thead><tbody>{importantRows.map((row) => <tr key={row.code}><td><strong>{row.code} · {row.name}</strong><small>{row.category}</small></td><td>{formatQty(row.opening)}</td><td>{row.received ? formatQty(row.received) : '-'}</td><td>{row.used ? formatQty(row.used) : '-'}</td><td>{row.borrowed ? formatQty(row.borrowed) : '-'}</td><td>{row.transferred ? formatQty(row.transferred) : '-'}</td><td className={row.adjustment < 0 ? 'change-down' : row.adjustment > 0 ? 'change-up' : ''}>{row.adjustment ? `${row.adjustment > 0 ? '+' : ''}${formatQty(row.adjustment)}` : '-'}</td><td><b>{formatQty(row.closing)}</b></td><td>{row.unit}</td></tr>)}</tbody></table></section><p className="report-note">* ปรับยอด/รอตรวจสอบ คือผลต่างที่ยังไม่มีเอกสารรับเข้า Stock รายวัน เบิก ยืม หรือโอนในระบบ เมื่อนำเข้าเอกสาร JERA ตัวเลขจะถูกแยกเข้าช่องที่ถูกต้อง</p></> : <section className="panel snapshot-empty"><Boxes/><h3>นำเข้าไฟล์ต้นงวดและไฟล์ล่าสุด</h3><p>ครั้งต่อไประบบจะจำยอดล่าสุดไว้เป็นต้นงวดให้โดยอัตโนมัติ</p></section>}
       </>}
       {view === 'monthly' && <>
       <div className="report-metrics">
@@ -1063,7 +1063,7 @@ function Reports({
       </div>
       <section className="ops-table panel">
         <div className="report-print-head">
-          <img src="/michiko-logo.png" alt="MICHIKO" />
+          <span className="report-logo-crop"><img src="/michiko-logo.png" alt="MICHIKO" /></span>
           <div><h2>รายงานสต็อกคงคลังประจำเดือน</h2><p>{closingSnapshot ? formatSnapshotDate(closingSnapshot.date) : formatShortDate(today())} · MICHIKO สาขา Emsphere</p></div>
         </div>
         <div className="ops-toolbar">
