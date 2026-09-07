@@ -39,7 +39,7 @@ type RecordRow = {
   exp?: string;
   attachment?: string;
 };
-type ReceiveDraft = { product: string; qty: number; unit: string; lot: string; mfg: string; exp: string };
+type ReceiveDraft = { code: string; product: string; qty: number; unit: string; lot: string; mfg: string; exp: string };
 type Product = {
   id: string;
   code: string;
@@ -118,6 +118,7 @@ export function OperationalPage({
       records={records}
       setRecords={setRecords}
       products={products}
+      setProducts={setProducts}
       notify={notify}
     />
   );
@@ -172,12 +173,14 @@ function TransactionPage({
   records,
   setRecords,
   products,
+  setProducts,
   notify,
 }: {
   page: string;
   records: RecordRow[];
   setRecords: (v: RecordRow[] | ((p: RecordRow[]) => RecordRow[])) => void;
   products: Product[];
+  setProducts: (v: Product[] | ((p: Product[]) => Product[])) => void;
   notify: (s: string) => void;
 }) {
   const cfg = configs[page] || configs['รับเข้า'];
@@ -206,6 +209,39 @@ function TransactionPage({
   const rows = records.filter((r) => page === 'โอนย้าย / ยืมคืน' ? branchTradeTypes.includes(r.type) : r.type === cfg.type);
   const save = () => {
     if (page === 'รับเข้า' && receiveDrafts.length) {
+      const hasPo = /\bPO\b/i.test(form.note);
+      if (hasPo) {
+        setProducts((current) => {
+          const next = [...current];
+          receiveDrafts.forEach((item) => {
+            const productIndex = next.findIndex((product) =>
+              product.code === item.code || normalizeName(product.name) === normalizeName(item.product),
+            );
+            if (productIndex >= 0) {
+              const product = next[productIndex];
+              next[productIndex] = {
+                ...product,
+                stock: product.stock + item.qty,
+                expiry: item.exp || product.expiry,
+              };
+            } else {
+              next.push({
+                id: id(),
+                code: item.code || `AUTO${String(next.length + 1).padStart(4, '0')}`,
+                name: item.product,
+                category: inferProductCategory(item.product),
+                unit: item.unit,
+                minimum: 0,
+                active: true,
+                stock: item.qty,
+                expiry: item.exp,
+                note: `เพิ่มอัตโนมัติจาก ${form.note}`,
+              });
+            }
+          });
+          return next;
+        });
+      }
       setRecords((current) => [
         ...receiveDrafts.map((item) => ({
           id: id(), date: form.date, branch: form.branch, party: form.party,
@@ -216,7 +252,7 @@ function TransactionPage({
       ]);
       setReceiveDrafts([]);
       setOpen(false);
-      notify(`บันทึกรับเข้า ${receiveDrafts.length} รายการจากเอกสารแล้ว`);
+      notify(`บันทึกรับเข้า ${receiveDrafts.length} รายการ${hasPo ? ' และอัปเดตคลังจาก PO แล้ว' : 'จากเอกสารแล้ว'}`);
       return;
     }
     if (!form.product || form.qty <= 0) return;
@@ -377,12 +413,23 @@ function RecordTable({
 }) {
   const [query, setQuery] = useState('');
   const filteredRows = rows.filter((row) => `${row.product} ${row.party} ${row.note} ${row.type}`.toLowerCase().includes(query.toLowerCase()));
+  const printTitle = configs[page]?.title || (page === 'ประวัติ' ? 'ประวัติการเคลื่อนไหว Stock' : page);
+  const rowDates = filteredRows.map((row) => row.date).filter(Boolean).sort();
+  const printPeriod = rowDates.length
+    ? rowDates[0] === rowDates[rowDates.length - 1]
+      ? formatShortDate(rowDates[0])
+      : `${formatShortDate(rowDates[0])} ถึง ${formatShortDate(rowDates[rowDates.length - 1])}`
+    : 'ไม่พบรายการ';
   const exportRows = () => {
     const data = filteredRows.map((row, index) => ({ วันที่: formatShortDate(row.date), เลขที่เอกสาร: docNo(row.type, index), ประเภท: row.type, สินค้า: row.product, จำนวน: row.qty, หน่วย: row.unit, สาขา: row.branch, รายละเอียด: row.party, หมายเหตุ: row.note, สถานะ: row.status }));
     const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(data), 'รายการ'); XLSX.writeFile(workbook, `michiko_${page}_${today()}.xlsx`);
   };
   return (
     <section className="ops-table panel">
+      <div className="report-print-head">
+        <img src="/michiko-logo.png" alt="MICHIKO" />
+        <div><h2>{printTitle}</h2><p>{printPeriod} · MICHIKO สาขา Emsphere</p></div>
+      </div>
       <div className="ops-toolbar">
         <label>
           <Search size={16} />
@@ -697,6 +744,10 @@ function Inventory({
         </section>
       )}
       <section className="ops-table panel">
+        <div className="report-print-head">
+          <img src="/michiko-logo.png" alt="MICHIKO" />
+          <div><h2>รายงาน Stock คงคลัง</h2><p>{formatShortDate(today())} · MICHIKO สาขา Emsphere</p></div>
+        </div>
         <div className="ops-toolbar">
           <label>
             <Search size={16} />
@@ -834,6 +885,10 @@ function Products({
         </section>
       )}
       <section className="ops-table panel">
+        <div className="report-print-head">
+          <img src="/michiko-logo.png" alt="MICHIKO" />
+          <div><h2>ทะเบียนสินค้า</h2><p>พิมพ์เมื่อ {formatShortDate(today())} · MICHIKO</p></div>
+        </div>
         <table>
           <thead>
             <tr>
@@ -1007,6 +1062,10 @@ function Reports({
         />
       </div>
       <section className="ops-table panel">
+        <div className="report-print-head">
+          <img src="/michiko-logo.png" alt="MICHIKO" />
+          <div><h2>รายงานสต็อกคงคลังประจำเดือน</h2><p>{closingSnapshot ? formatSnapshotDate(closingSnapshot.date) : formatShortDate(today())} · MICHIKO สาขา Emsphere</p></div>
+        </div>
         <div className="ops-toolbar">
           <select>
             <option>กันยายน 2026</option>
@@ -1242,6 +1301,7 @@ async function parseJeraReceivePdf(file: File, products: Product[]) {
     const quantity = Number(segment.find((value) => /^\d+(?:\.\d+)?$/.test(value.replace(/,/g, '')))?.replace(/,/g, '')) || 1;
     const dates = [...segmentText.matchAll(/(\d{2}-\d{2}-\d{4})/g)].map((match) => match[1]);
     return {
+      code,
       product: product?.name || fallbackName,
       qty: quantity,
       unit: product?.unit || segment.find((value) => ['ขวด', 'กล่อง', 'อัน', 'ชิ้น', 'cc', 'ml', 'ชุด'].includes(value)) || 'อัน',
@@ -1251,6 +1311,17 @@ async function parseJeraReceivePdf(file: File, products: Product[]) {
     };
   });
   return { po, supplier, items };
+}
+
+function inferProductCategory(name: string) {
+  const normalized = normalizeName(name);
+  const section = accountingTemplate.find(([, names]) =>
+    names.split('|').some((item) => {
+      const candidate = normalizeName(item);
+      return candidate === normalized || candidate.includes(normalized) || normalized.includes(candidate);
+    }),
+  );
+  return section?.[0] || 'รอจัดหมวดหมู่';
 }
 function printOperationalReport() {
   document.body.classList.add('operations-print');

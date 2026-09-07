@@ -552,9 +552,8 @@
 /* Operational reports: print every row with repeated headers and strong colors */
 @media print{
   body.operations-print .workspace{display:block!important;width:100%!important;margin:0!important}
-  body.operations-print .sidebar,body.operations-print .topbar,body.operations-print .report-tabs,body.operations-print .snapshot-controls,body.operations-print .ops-toolbar button,body.operations-print .toast{display:none!important}
+  body.operations-print .sidebar,body.operations-print .topbar,body.operations-print .report-tabs,body.operations-print .snapshot-controls,body.operations-print .ops-head,body.operations-print .ops-form,body.operations-print .ops-toolbar,body.operations-print .ops-table button,body.operations-print .confirm-mini,body.operations-print .toast{display:none!important}
   body.operations-print .content{padding:8mm!important;max-width:none!important;background:#fff!important}
-  body.operations-print .ops-head{margin-bottom:4mm!important}
   body.operations-print .panel{box-shadow:none!important;border:1pt solid #8f797b!important}
   body.operations-print .ops-table{overflow:visible!important}
   body.operations-print .ops-table table,body.operations-print .monthly-accounting-table{min-width:0!important;width:100%!important;font-size:8pt!important;border-collapse:separate!important;border-spacing:0!important;border-top:.7pt solid #8f797b!important}
